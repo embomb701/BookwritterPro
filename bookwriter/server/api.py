@@ -24,7 +24,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 from .broker import EventBroker, TERMINAL_TYPES
-from .schemas import CreateBookRequest, WriteRequest
+from .schemas import CreateBookRequest, KdpRequest, WriteRequest
 from .service import BookService, ServiceError
 
 # Heartbeat interval (seconds) for the SSE stream.
@@ -128,6 +128,34 @@ def create_app(data_dir: str | None = None) -> FastAPI:
                 headers={"Content-Disposition": f'attachment; filename="{safe}.md"'},
             )
         return data
+
+    # -- KDP ------------------------------------------------------------
+    @app.post("/api/books/{book_id}/kdp")
+    async def prepare_kdp(book_id: str, req: KdpRequest) -> Dict[str, Any]:
+        # Generation may call the model + writes the kit; run off the event loop.
+        return await asyncio.to_thread(service.prepare_kdp, book_id, req)
+
+    @app.get("/api/books/{book_id}/kdp")
+    async def get_kdp(book_id: str) -> Dict[str, Any]:
+        return {"metadata": service.get_kdp(book_id)}
+
+    @app.get("/api/books/{book_id}/kdp/listing")
+    async def get_kdp_listing(book_id: str) -> Response:
+        return Response(
+            content=service.kdp_listing(book_id),
+            media_type="text/plain; charset=utf-8",
+        )
+
+    @app.get("/api/books/{book_id}/export/epub")
+    async def export_epub(book_id: str) -> FileResponse:
+        path = await asyncio.to_thread(service.epub_path, book_id)
+        fname = service.epub_filename(book_id)
+        return FileResponse(
+            path,
+            media_type="application/epub+zip",
+            filename=fname,
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
 
     @app.delete("/api/books/{book_id}")
     async def delete_book(book_id: str) -> Dict[str, Any]:

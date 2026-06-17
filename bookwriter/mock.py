@@ -39,6 +39,8 @@ class MockLLM:
             data = self._plan(user)
         elif "issues" in props:
             data = {"issues": []}
+        elif "keywords" in props and "categories" in props:
+            data = self._kdp(user)
         else:
             data = self._delta(user)
         self._record(ledger, stage, model, system, user, cached, use_cache, cache_ttl,
@@ -253,6 +255,129 @@ class MockLLM:
             "items": items,
             "threads": threads,
             "outline": outline,
+        }
+
+    # ------------------------------------------------------------------
+    # KDP listing fields (description / keywords / categories / reading age).
+    # Reuses the same premise/genre extraction philosophy as _parse().
+    _GENRE_CATEGORIES = {
+        "mystery": ["Mystery, Thriller & Suspense > Mystery",
+                    "Mystery, Thriller & Suspense > Crime Fiction",
+                    "Literature & Fiction > Literary Fiction"],
+        "thriller": ["Mystery, Thriller & Suspense > Thrillers & Suspense",
+                     "Mystery, Thriller & Suspense > Crime Fiction",
+                     "Literature & Fiction > Psychological Fiction"],
+        "fantasy": ["Science Fiction & Fantasy > Fantasy > Epic",
+                    "Science Fiction & Fantasy > Fantasy > Sword & Sorcery",
+                    "Literature & Fiction > Mythology & Folk Tales"],
+        "science fiction": ["Science Fiction & Fantasy > Science Fiction",
+                            "Science Fiction & Fantasy > Science Fiction > Adventure",
+                            "Literature & Fiction > Dystopian"],
+        "sci-fi": ["Science Fiction & Fantasy > Science Fiction",
+                   "Science Fiction & Fantasy > Science Fiction > Adventure",
+                   "Literature & Fiction > Dystopian"],
+        "romance": ["Romance > Contemporary",
+                    "Romance > Romantic Suspense",
+                    "Literature & Fiction > Women's Fiction"],
+        "horror": ["Horror > Supernatural",
+                   "Horror > Psychological",
+                   "Literature & Fiction > Horror"],
+        "historical": ["Literature & Fiction > Historical Fiction",
+                       "Literature & Fiction > Literary Fiction",
+                       "Romance > Historical"],
+    }
+    _GENRE_KEYWORDS = {
+        "mystery": ["small town mystery", "amateur detective",
+                    "twist ending suspense", "secrets and lies"],
+        "thriller": ["psychological thriller", "page turner suspense",
+                     "dark conspiracy", "edge of your seat"],
+        "fantasy": ["epic fantasy adventure", "magic and prophecy",
+                    "quest fantasy series", "hidden world fantasy"],
+        "science fiction": ["space opera adventure", "dystopian future",
+                            "first contact sci fi", "hard science fiction"],
+        "romance": ["slow burn romance", "second chance love",
+                    "emotional love story", "small town romance"],
+        "horror": ["supernatural horror", "haunting and dread",
+                   "creeping psychological horror", "small town nightmare"],
+    }
+
+    @classmethod
+    def _kdp_parse(cls, user: str):
+        """Extract premise/genre/title/audience from the KDP listing prompt."""
+        def grab(pat, default=""):
+            m = re.search(pat, user, re.IGNORECASE)
+            return m.group(1).strip() if m else default
+        pm = re.search(
+            r"PREMISE:\s*\n?(.*?)(?:\n\s*(?:CHAPTER TITLES|Write the listing)|\Z)",
+            user, re.DOTALL | re.IGNORECASE)
+        premise = (pm.group(1).strip() if pm and pm.group(1).strip()
+                   else "A story waiting to be told.")
+        title = grab(r"BOOK TITLE:\s*(.+)", "")
+        genre = grab(r"GENRE:\s*(.+)", "literary fiction") or "literary fiction"
+        audience = grab(r"AUDIENCE:\s*(.+)", "adult") or "adult"
+        return premise.strip(), genre.strip(), title.strip(), audience.strip()
+
+    def _kdp(self, user: str) -> Dict[str, Any]:
+        premise, genre, title, audience = self._kdp_parse(user)
+        glow = genre.lower()
+
+        # categories: first matching genre family, else literary defaults.
+        categories = next(
+            (v for k, v in self._GENRE_CATEGORIES.items() if k in glow),
+            ["Literature & Fiction > Literary Fiction",
+             "Literature & Fiction > Genre Fiction",
+             "Literature & Fiction > Contemporary Fiction"],
+        )[:3]
+
+        # keywords: genre-family phrases + 1-2 premise-derived phrases. Never
+        # the title or author; each <= 50 chars; deduped.
+        base = next((v for k, v in self._GENRE_KEYWORDS.items() if k in glow),
+                    ["literary fiction novel", "character driven story",
+                     "book club fiction", "emotional family drama"])
+        prem_words = self._keywords(premise)
+        prem_kw = []
+        if prem_words:
+            prem_kw.append((prem_words[0] + " story").lower())
+        if len(prem_words) > 1:
+            prem_kw.append((prem_words[1] + " novel").lower())
+        title_low = title.lower()
+        keywords, seen = [], set()
+        for k in base + prem_kw + ["new release fiction", "must read novel",
+                                    "standalone novel"]:
+            k = k.strip()[:50]
+            lk = k.lower()
+            if not k or lk in seen or (title_low and title_low in lk):
+                continue
+            seen.add(lk)
+            keywords.append(k)
+            if len(keywords) >= 7:
+                break
+
+        # description: punchy ~600-900 char back-cover blurb from the premise.
+        hook = premise if len(premise) < 220 else premise[:217].rstrip() + "..."
+        title_disp = title or "this novel"
+        description = (
+            f"<b>{title_disp}</b> is a {genre} you won't be able to put down.<br/><br/>"
+            f"{hook}<br/><br/>"
+            "As the pressure mounts, every choice carries a cost, and the line "
+            "between who to trust and who to fear begins to blur. Secrets surface. "
+            "Loyalties fracture. And by the time the truth arrives, nothing will "
+            "ever be the same.<br/><br/>"
+            f"Perfect for readers who love immersive, character-driven {genre} with "
+            "a relentless pull and an ending that lingers. <i>One sitting won't be "
+            "enough.</i>"
+        )
+
+        child = any(m in audience.lower()
+                    for m in ("child", "kid", "middle grade", "young adult", "ya", "teen"))
+        return {
+            "subtitle": "",
+            "description": description,
+            "keywords": keywords,
+            "categories": categories,
+            "reading_age_min": "8" if child else "",
+            "reading_age_max": "12" if child else "",
+            "series_suggestion": "",
         }
 
     def _delta(self, user: str) -> Dict[str, Any]:

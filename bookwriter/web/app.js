@@ -36,6 +36,11 @@ const API = {
   cost: (id) => API._json("GET", `/books/${id}/cost`),
   manuscript: (id) => API._json("GET", `/books/${id}/manuscript`),
   deleteBook: (id) => API._json("DELETE", `/books/${id}`),
+  // KDP publishing: generate listing metadata (auto-fill), read it back, and
+  // fetch the plain-text listing for clipboard. EPUB/cover are downloaded via
+  // direct hrefs / client-side canvas, not these JSON helpers.
+  kdpGenerate: (id, payload) => API._json("POST", `/books/${id}/kdp`, payload || {}),
+  kdp: (id) => API._json("GET", `/books/${id}/kdp`),
 };
 
 /* ------------------------------- helpers -------------------------------- */
@@ -214,6 +219,7 @@ const Router = {
       const id = parts[1];
       if (parts[2] === "graph") return Views.graph(id);
       if (parts[2] === "manuscript") return Views.manuscript(id);
+      if (parts[2] === "publish") return Views.publish(id);
       return Views.studio(id);
     }
     return Views.library();
@@ -647,6 +653,7 @@ Views.studio = async function (id) {
     const tab = t.dataset.tab;
     const href = tab === "graph" ? `#/b/${id}/graph`
       : tab === "manuscript" ? `#/b/${id}/manuscript`
+      : tab === "publish" ? `#/b/${id}/publish`
       : `#/b/${id}`;
     t.setAttribute("href", href);
   });
@@ -1451,6 +1458,8 @@ Views.manuscript = async function (id) {
   mountView(view);
   $("#ms-back", view).setAttribute("href", `#/b/${id}`);
   $("#ms-download", view).setAttribute("href", `/api/books/${id}/manuscript?download=1`);
+  const msPublish = $("#ms-publish", view);
+  if (msPublish) msPublish.setAttribute("href", `#/b/${id}/publish`);
 
   const book = $("#reader-book", view);
   book.innerHTML = '<div class="reader-loading"><div class="sk-line w-40 skeleton" style="margin:0 auto 2em;height:2.2em;"></div>' +
@@ -2009,8 +2018,13 @@ function boot() {
   Router.start();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
+// Boot only once the document is fully parsed AND all deferred scripts have run
+// (e.g. kdp.js, which registers Views.publish). During deferred execution
+// readyState is "interactive", so waiting for DOMContentLoaded guarantees every
+// other defer script has executed before the first route resolves. Only boot
+// synchronously if the page is already fully "complete" (e.g. injected late).
+if (document.readyState === "complete") {
   boot();
+} else {
+  document.addEventListener("DOMContentLoaded", boot);
 }

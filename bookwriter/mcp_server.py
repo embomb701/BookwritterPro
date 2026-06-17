@@ -286,6 +286,19 @@ class _ServiceAdapter:
     def get_status(self, book_id: str) -> Dict[str, Any]:
         return self._local.get_status(book_id)
 
+    # ---- KDP packaging (local, shared dir) ----------------------------
+    # The KDP engine call is a pure function of (graph, settings, ledger) plus
+    # caller identity fields, so we run it locally against the *same* data dir
+    # the HTTP service uses. The kit lands in <book_dir>/kdp/ either way.
+    def prepare_kdp(self, book_id: str, **kw) -> Dict[str, Any]:
+        return self._local.prepare_kdp(book_id, **kw)
+
+    def get_kdp(self, book_id: str) -> Dict[str, Any]:
+        return self._local.get_kdp(book_id)
+
+    def epub_path(self, book_id: str) -> str:
+        return self._local.epub_path(book_id)
+
 
 def _flatten_create(res: Dict[str, Any]) -> Dict[str, Any]:
     """Turn the HTTP {book, bible} into the flat MCP create_book payload."""
@@ -615,6 +628,68 @@ class _LocalBookService:
         md = self._store(book_id).assemble_manuscript(graph)
         return {"markdown": md, "words": len(md.split())}
 
+    # ---- KDP packaging ------------------------------------------------
+    def _kdp_dir(self, book_id: str) -> str:
+        return os.path.join(self._book_dir(book_id), "kdp")
+
+    def prepare_kdp(self, book_id: str, *, author_first: str, author_last: str,
+                    language: str = "English", subtitle: str = "",
+                    series: str = "", edition: str = "",
+                    contributors: Optional[List[Dict[str, str]]] = None,
+                    ) -> Dict[str, Any]:
+        """Generate KDP metadata + build the upload kit into <book>/kdp/.
+
+        Returns {"metadata": <dict>, "listing": <copy-paste text>,
+        "paths": {metadata, epub, cover, listing, checklist}}.
+        """
+        from bookwriter.kdp import (
+            generate_kdp_metadata, build_kdp_kit, _listing_text,
+        )
+        from bookwriter.costs import CostLedger
+
+        meta = self._read_meta(book_id)
+        graph = self._store(book_id).load_graph()
+        if graph is None:
+            raise BookNotFound(f"{book_id} has no plan; create_book first")
+
+        settings = self._settings(book_id, meta)
+        llm = self._make_llm(bool(meta.get("mock", False)))
+        ledger = CostLedger()
+
+        kdp_meta = generate_kdp_metadata(
+            llm, settings, ledger, graph,
+            author_first=author_first,
+            author_last=author_last,
+            language=language or "English",
+            subtitle=subtitle,
+            series=series,
+            edition=edition,
+            contributors=contributors,
+        )
+        kit = build_kdp_kit(graph, kdp_meta, self._kdp_dir(book_id))
+        return {
+            "metadata": kit["metadata"],
+            "listing": _listing_text(kdp_meta),
+            "paths": kit["paths"],
+        }
+
+    def get_kdp(self, book_id: str) -> Dict[str, Any]:
+        """Return the copy-paste KDP listing text for an already-prepared kit."""
+        self._read_meta(book_id)
+        listing = os.path.join(self._kdp_dir(book_id), "kdp-listing.txt")
+        if not os.path.exists(listing):
+            raise BookNotFound(f"{book_id} has no KDP kit; run prepare_kdp first")
+        with open(listing, "r", encoding="utf-8") as f:
+            return {"listing": f.read()}
+
+    def epub_path(self, book_id: str) -> str:
+        """Return the path to the book's KDP-ready EPUB, building the kit if needed."""
+        self._read_meta(book_id)
+        epub = os.path.join(self._kdp_dir(book_id), "manuscript.epub")
+        if not os.path.exists(epub):
+            raise BookNotFound(f"{book_id} has no EPUB; run prepare_kdp first")
+        return epub
+
 
 # ---------------------------------------------------------------------------
 # Profiles helper (no I/O, pure config) — shared by the tool below.
@@ -834,6 +909,85 @@ def build_server():
             return get_service().get_manuscript(book_id)
         except BookNotFound as e:
             return {"error": f"book not found: {e}"}
+
+    @mcp.tool()
+    def prepare_kdp(
+        book_id: str,
+        author_first: str,
+        author_last: str,
+        language: str = "English",
+        subtitle: str = "",
+        series: str = "",
+        edition: str = "",
+    ) -> Dict[str, Any]:
+        """Generate Amazon KDP metadata and build the upload-ready kit.
+
+        Runs the KDP listing copywriter over the book's continuity graph to
+        generate the marketing fields (description, up to 7 keywords, up to 3
+        categories, reading age, series suggestion), enforces every KDP limit in
+        Python, then writes the kit into the book's `kdp/` directory:
+        metadata.json, manuscript.epub, cover.svg, kdp-listing.txt, CHECKLIST.md.
+
+        Identity fields are carried verbatim from the caller (never invented).
+        The book must already be planned AND written (call create_book then
+        write_book first) so the EPUB contains the chapter prose.
+
+        Args:
+            book_id: The id returned by create_book / list_books.
+            author_first: Primary author first name (put a middle name/prefix
+                          here too). Pen names allowed.
+            author_last: Primary author last name (put a suffix here too).
+            language: Book language (default "English"; English is supported).
+            subtitle: Optional subtitle; KDP auto-inserts the colon, so this is
+                      stored separately from the title. Empty = none. If empty,
+                      the model may suggest one.
+            series: Optional series name; if empty the model may suggest one.
+            edition: Optional edition number (cannot be changed after publish).
+
+        Returns {"metadata": <full page-1 fields dict>, "listing": <copy-paste
+        KDP listing text>, "paths": {metadata, epub, cover, listing, checklist}}.
+        """
+        try:
+            return get_service().prepare_kdp(
+                book_id,
+                author_first=author_first,
+                author_last=author_last,
+                language=language,
+                subtitle=subtitle,
+                series=series,
+                edition=edition,
+            )
+        except BookNotFound as e:
+            return {"error": f"book not found: {e}"}
+
+    @mcp.tool()
+    def export_epub(book_id: str) -> Dict[str, Any]:
+        """Return the path to the book's KDP-ready EPUB.
+
+        The EPUB is built by prepare_kdp (which embeds the cover and chapter
+        prose). Call prepare_kdp first; this tool returns the path to the
+        already-built `manuscript.epub` in the book's `kdp/` directory.
+
+        Returns {"path": <absolute path to manuscript.epub>}.
+        """
+        try:
+            return {"path": get_service().epub_path(book_id)}
+        except BookNotFound as e:
+            return {"error": f"book not found: {e}"}
+
+    @mcp.tool()
+    def get_kdp_listing(book_id: str) -> str:
+        """Return the copy-paste KDP listing text (all page-1 fields).
+
+        This is the contents of `kdp-listing.txt` from the kit: every Amazon KDP
+        book-details field labeled as KDP shows it (language, title, subtitle,
+        series, author, description, rights, categories, keywords, ...), ready to
+        paste field by field. Call prepare_kdp first to build the kit.
+        """
+        try:
+            return get_service().get_kdp(book_id)["listing"]
+        except BookNotFound as e:
+            return f"error: book not found: {e}"
 
     return mcp
 

@@ -26,6 +26,14 @@ from ..config import (
     DEFAULT_PROFILE,
     MODEL_PRICES,
 )
+from ..costs import CostLedger
+from ..kdp import (
+    KdpMetadata,
+    MAX_CONTRIBUTORS,
+    build_epub,
+    build_kdp_kit,
+    generate_kdp_metadata,
+)
 from ..mock import MockLLM
 from ..pipeline import BookPipeline
 from ..store import BookStore
@@ -383,6 +391,146 @@ class BookService:
             raise ServiceError(404, f"Book {book_id!r} has no plan.")
         markdown = store.assemble_manuscript(graph)
         return {"markdown": markdown, "words": len(markdown.split())}
+
+    # ------------------------------------------------------------------ #
+    # KDP packaging
+    # ------------------------------------------------------------------ #
+    def _kdp_dir(self, book_id: str) -> str:
+        return os.path.join(self._book_dir(book_id), "kdp")
+
+    def _kdp_json_path(self, book_id: str) -> str:
+        return os.path.join(self._book_dir(book_id), "kdp.json")
+
+    def _load_graph_or_404(self, book_id: str):
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        return graph
+
+    def prepare_kdp(self, book_id: str, req: "KdpRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        meta = self._require_meta(book_id)
+        graph = self._load_graph_or_404(book_id)
+        if not graph.chapters:
+            raise ServiceError(404, f"Book {book_id!r} has no written chapters.")
+
+        # Pick the LLM: explicit req.mock wins; otherwise mock unless a key is set.
+        if req.mock is None:
+            mock = bool(meta.get("mock", False)) or not self.has_api_key()
+        else:
+            mock = bool(req.mock)
+        if not mock and not self.has_api_key():
+            raise ServiceError(
+                400,
+                "No ANTHROPIC_API_KEY set; enable demo mode (mock) or set a key.",
+            )
+
+        settings = self._make_settings(meta, book_id)
+        llm = self._make_llm(mock)
+        ledger = CostLedger()
+
+        try:
+            kdp_meta = generate_kdp_metadata(
+                llm, settings, ledger, graph,
+                author_first=req.author_first,
+                author_last=req.author_last,
+                language=req.language or "English",
+                subtitle=req.subtitle,
+                series=req.series or "",
+                edition=req.edition or "",
+                contributors=req.contributors or [],
+            )
+        except Exception as e:  # noqa: BLE001 - surfaced to client
+            raise ServiceError(500, f"KDP metadata generation failed: {e}")
+
+        # Apply user overrides that the generator may not honor verbatim.
+        kdp_meta.language = req.language or "English"
+        if req.subtitle is not None:
+            kdp_meta.subtitle = req.subtitle.strip()
+        if req.series:
+            kdp_meta.series = req.series
+        kdp_meta.series_part = req.series_part or ""
+        kdp_meta.edition = req.edition or ""
+        kdp_meta.publishing_rights = (
+            "public_domain" if req.publishing_rights == "public_domain" else "owned"
+        )
+        kdp_meta.sexually_explicit = bool(req.sexually_explicit)
+        kdp_meta.reading_age_min = req.reading_age_min or ""
+        kdp_meta.reading_age_max = req.reading_age_max or ""
+        if req.contributors:
+            contribs: List[Dict[str, str]] = []
+            for c in req.contributors[:MAX_CONTRIBUTORS]:
+                contribs.append({
+                    "first": str(c.get("first", "")).strip(),
+                    "last": str(c.get("last", "")).strip(),
+                })
+            kdp_meta.contributors = contribs
+
+        out_dir = self._kdp_dir(book_id)
+        result = build_kdp_kit(graph, kdp_meta, out_dir, cover_svg=req.cover_svg)
+
+        meta_dict = result["metadata"]
+        # Persist a kdp.json snapshot in the book dir for later retrieval.
+        with open(self._kdp_json_path(book_id), "w", encoding="utf-8") as f:
+            json.dump(meta_dict, f, indent=2, ensure_ascii=False)
+
+        listing = ""
+        listing_path = result["paths"].get("listing")
+        if listing_path and os.path.isfile(listing_path):
+            with open(listing_path, "r", encoding="utf-8") as f:
+                listing = f.read()
+
+        return {"metadata": meta_dict, "listing": listing, "paths": result["paths"]}
+
+    def get_kdp(self, book_id: str) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        path = self._kdp_json_path(book_id)
+        if not os.path.isfile(path):
+            raise ServiceError(404, f"Book {book_id!r} has no KDP metadata; prepare it first.")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def kdp_listing(self, book_id: str) -> str:
+        self._require_meta(book_id)
+        path = os.path.join(self._kdp_dir(book_id), "kdp-listing.txt")
+        if not os.path.isfile(path):
+            raise ServiceError(404, f"Book {book_id!r} has no KDP listing; prepare it first.")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def epub_path(self, book_id: str) -> str:
+        """Path to the built manuscript.epub, building it on demand if missing."""
+        meta = self._require_meta(book_id)
+        graph = self._load_graph_or_404(book_id)
+        if not graph.chapters:
+            raise ServiceError(404, f"Book {book_id!r} has no written chapters.")
+
+        out_dir = self._kdp_dir(book_id)
+        epub = os.path.join(out_dir, "manuscript.epub")
+        if os.path.isfile(epub):
+            return epub
+
+        # Build on demand. Prefer saved KDP metadata (so the cover/author match a
+        # prior prepare); otherwise synthesize a minimal metadata with a fallback
+        # cover so an EPUB is always available post-write.
+        kdp_json = self._kdp_json_path(book_id)
+        if os.path.isfile(kdp_json):
+            with open(kdp_json, "r", encoding="utf-8") as f:
+                kdp_meta = KdpMetadata.from_dict(json.load(f))
+        else:
+            kdp_meta = KdpMetadata(
+                title=meta.get("title") or graph.bible.title or "Untitled",
+                author_first="",
+                author_last="",
+            )
+        os.makedirs(out_dir, exist_ok=True)
+        with open(epub, "wb") as f:
+            f.write(build_epub(graph, kdp_meta))
+        return epub
+
+    def epub_filename(self, book_id: str) -> str:
+        meta = self._require_meta(book_id)
+        return f"{_slug(meta.get('title') or book_id)}.epub"
 
     # ------------------------------------------------------------------ #
     # Delete

@@ -115,6 +115,42 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_kdp(args) -> int:
+    from .costs import CostLedger
+    from .kdp import generate_kdp_metadata, build_kdp_kit
+
+    settings = _make_settings(args)
+    store = BookStore(args.project)
+    graph = store.load_graph()
+    if graph is None:
+        raise SystemExit("error: no plan found in project; run 'generate' first")
+    if not graph.chapters:
+        print("warning: no chapters written yet; the EPUB will be empty. "
+              "Run 'write' first for a complete kit.")
+
+    meta = generate_kdp_metadata(
+        _make_llm(args), settings, CostLedger(), graph,
+        author_first=args.author_first,
+        author_last=args.author_last,
+        language=args.language or "English",
+        subtitle=args.subtitle or "",
+        series=args.series or "",
+        edition=args.edition or "",
+    )
+    out_dir = os.path.join(args.project, "kdp")
+    kit = build_kdp_kit(graph, meta, out_dir)
+
+    print(f"\nKDP kit written to {out_dir}")
+    print(f"  Title:      {meta.full_title()}")
+    print(f"  Author:     {meta.author_full()}")
+    print(f"  Keywords:   {len(meta.keywords)} / 7")
+    print(f"  Categories: {len(meta.categories)} / 3")
+    print(f"  EPUB:       {kit['paths']['epub']}")
+    print(f"  Listing:    {kit['paths']['listing']}")
+    print(f"  Checklist:  {kit['paths']['checklist']}")
+    return 0
+
+
 def cmd_profiles(_args) -> int:
     print("Quality profiles (stage -> model):\n")
     for name, p in QUALITY_PROFILES.items():
@@ -167,6 +203,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("report", help="show the latest cost report + progress")
     add_common(sp, generating=False); sp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser("kdp", help="build the Amazon KDP upload kit (metadata + EPUB)")
+    add_common(sp)
+    sp.add_argument("--author-first", required=True, help="primary author first name (pen names OK)")
+    sp.add_argument("--author-last", required=True, help="primary author last name")
+    sp.add_argument("--subtitle", default="", help="optional subtitle (stored separately; KDP adds the colon)")
+    sp.add_argument("--series", default="", help="optional series name")
+    sp.add_argument("--edition", default="", help="optional edition number")
+    sp.add_argument("--language", default="English", help="book language (default English)")
+    sp.set_defaults(func=cmd_kdp)
 
     sp = sub.add_parser("profiles", help="list quality profiles and pricing")
     sp.set_defaults(func=cmd_profiles)

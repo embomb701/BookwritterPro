@@ -33,6 +33,23 @@ class WriteRequest(BaseModel):
     restart: bool = False
 
 
+class KdpRequest(BaseModel):
+    author_first: str
+    author_last: str
+    language: str = "English"
+    subtitle: Optional[str] = None
+    series: str = ""
+    series_part: str = ""
+    edition: str = ""
+    contributors: List[Dict[str, str]] = Field(default_factory=list)
+    publishing_rights: str = "owned"     # 'owned' | 'public_domain'
+    sexually_explicit: bool = False
+    reading_age_min: str = ""
+    reading_age_max: str = ""
+    cover_svg: Optional[str] = None
+    mock: Optional[bool] = None
+
+
 # --------------------------------------------------------------------------- #
 # Responses
 # --------------------------------------------------------------------------- #
@@ -101,6 +118,16 @@ class CostResponse(BaseModel):
 class ManuscriptResponse(BaseModel):
     markdown: str = ""
     words: int = 0
+
+
+class KdpResponse(BaseModel):
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    listing: str = ""
+    paths: Dict[str, str] = Field(default_factory=dict)
+
+
+class KdpMetadataResponse(BaseModel):
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):

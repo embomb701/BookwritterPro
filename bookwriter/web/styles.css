@@ -819,11 +819,17 @@ h1, h2, h3, h4 { line-height: 1.12; font-weight: 600; }
 .field .req { color: var(--accent); }
 .field .opt { color: var(--ink-faint); font-weight: 400; font-size: var(--t-xs); }
 .field-hint { font-size: var(--t-xs); color: var(--ink-faint); }
-input[type="text"], input[type="number"], textarea {
+input[type="text"], input[type="number"], textarea, select {
   width: 100%; padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink);
   transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease);
 }
+select { cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%238c8074' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right var(--s-3) center; background-size: 18px; padding-right: var(--s-7);
+}
+select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); background-color: var(--surface); }
 textarea { resize: vertical; line-height: 1.55; }
 .field-hero textarea { font-family: var(--font-display); font-size: var(--t-md); }
 /* Focus uses a soft accent-tinted border + a glow halo so it clearly reads as
@@ -1594,7 +1600,111 @@ a:focus-visible, button:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .reader-body.is-streaming > p:last-child::after { animation: none !important; opacity: 1 !important; }
   /* The writing-row "breathe" settles to a steady tint + ring (no pulsing). */
   .chapter-item.is-writing { animation: none !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent); }
+  .kdp-cover, .kdp-chip { animation: none !important; }
 }
+
+/* =========================================================================
+   PUBLISH TO KDP (kdp.js / Views.publish)
+   Two-column editorial layout: the KDP page-1 form on the left, a sticky
+   cover + actions + checklist rail on the right. Reuses .field / .btn tokens.
+   ========================================================================= */
+.kdp-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--s-6); align-items: start;
+}
+@media (max-width: 980px) { .kdp-layout { grid-template-columns: 1fr; } }
+
+/* ---- form ---- */
+.kdp-form { display: grid; gap: var(--s-5); min-width: 0; }
+.kdp-group {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); padding: var(--s-5);
+  display: grid; gap: var(--s-4); box-shadow: var(--shadow-sm);
+}
+.kdp-group legend {
+  font-family: var(--font-display); font-weight: 600; font-size: var(--t-md);
+  padding: 0 var(--s-2); color: var(--ink); letter-spacing: -0.01em;
+}
+.kdp-label, .kdp-row-head label { font-weight: 600; font-size: var(--t-sm); }
+.kdp-row-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.kdp-count { font-size: var(--t-xs); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.kdp-counter { font-variant-numeric: tabular-nums; }
+.kdp-counter.is-over, .kdp-error { color: var(--bad); font-weight: 600; }
+
+/* ---- radios ---- */
+.kdp-radio { display: flex; align-items: flex-start; gap: var(--s-3); cursor: pointer; font-size: var(--t-sm); line-height: 1.4; }
+.kdp-radio input { margin-top: 2px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.kdp-radio-inline { display: flex; gap: var(--s-6); }
+
+/* ---- mini buttons ---- */
+.kdp-mini-btn {
+  border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink-soft);
+  border-radius: 999px; padding: var(--s-1) var(--s-3); font-size: var(--t-xs); font-weight: 600;
+  cursor: pointer; transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.kdp-mini-btn:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+.kdp-mini-btn[disabled] { opacity: .5; pointer-events: none; }
+.kdp-storyteller { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong)); }
+
+/* ---- contributors ---- */
+.kdp-contributors { display: grid; gap: var(--s-2); }
+.kdp-contributor { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--s-2); align-items: center; }
+
+/* ---- chips (categories / keywords) ---- */
+.kdp-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); min-height: 0; }
+.kdp-chips:empty { display: none; }
+.kdp-chip {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  background: var(--accent-soft); color: var(--ink); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px; padding: var(--s-1) var(--s-2) var(--s-1) var(--s-3); font-size: var(--t-sm);
+  animation: kdpChipIn .22s var(--ease-spring) both;
+}
+@keyframes kdpChipIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+.kdp-chip.is-over { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--paper-2)); }
+.kdp-chip-count { font-size: var(--t-xs); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.kdp-chip-x, .kdp-contrib-x {
+  border: none; background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-soft);
+  width: 20px; height: 20px; border-radius: 50%; cursor: pointer; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 15px; flex: none;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.kdp-chip-x:hover, .kdp-contrib-x:hover { background: var(--accent); color: var(--accent-ink); }
+.kdp-add-line { display: flex; gap: var(--s-2); align-items: center; }
+.kdp-add-line input { flex: 1; }
+.kdp-add-line .kdp-mini-btn { padding: var(--s-2) var(--s-4); }
+.kdp-kw-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.kdp-kw-foot .field-hint { flex: 1; min-width: 200px; margin: 0; }
+
+.kdp-form-note { font-size: var(--t-sm); color: var(--ink-soft); min-height: 1.2em; }
+.kdp-form-note.is-error { color: var(--bad); }
+
+/* ---- right rail ---- */
+.kdp-side { display: grid; gap: var(--s-5); position: sticky; top: var(--s-5); }
+@media (max-width: 980px) { .kdp-side { position: static; } }
+
+.kdp-cover-card { display: grid; gap: var(--s-3); justify-items: center; }
+.kdp-cover {
+  width: 100%; max-width: 230px; aspect-ratio: 1600 / 2560; border-radius: var(--radius-sm);
+  overflow: hidden; box-shadow: var(--shadow-lg); background: var(--surface-2);
+}
+.kdp-cover :where(svg, img) { width: 100%; height: 100%; object-fit: cover; }
+.kdp-cover-cap { font-size: var(--t-xs); color: var(--ink-faint); text-align: center; font-variant-numeric: tabular-nums; }
+
+.kdp-actions-card, .kdp-checklist-card {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); padding: var(--s-5); display: grid; gap: var(--s-3); box-shadow: var(--shadow-sm);
+}
+.kdp-action { width: 100%; }
+
+.kdp-checklist { display: grid; gap: var(--s-3); }
+.kdp-checklist li { display: flex; align-items: flex-start; gap: var(--s-3); font-size: var(--t-sm); line-height: 1.45; color: var(--ink-soft); }
+.kdp-checklist code { font-family: var(--font-mono); font-size: var(--t-xs); background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.kdp-step {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: var(--t-xs);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.kdp-note { font-size: var(--t-xs); color: var(--ink-faint); line-height: 1.5; border-top: 1px solid var(--line); padding-top: var(--s-3); }
 
 /* ===========================================================================
    COMMAND PALETTE (⌘K / Ctrl-K), SHORTCUTS HELP, SKIP LINK, VIEW TRANSITIONS

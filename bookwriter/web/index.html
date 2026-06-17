@@ -325,6 +325,7 @@
             <a class="tab is-active" href="#" data-tab="studio" aria-current="page">Studio</a>
             <a class="tab" href="#" data-tab="graph">Story graph</a>
             <a class="tab" href="#" data-tab="manuscript">Manuscript</a>
+            <a class="tab" href="#" data-tab="publish">Publish</a>
           </nav>
           <button class="btn btn-primary" id="generate-btn" type="button">
             <span class="btn-label">Generate</span>
@@ -471,7 +472,8 @@
         <div class="subview-actions">
           <button class="btn btn-ghost" id="ms-mode" type="button" aria-pressed="false">Plain view</button>
           <a class="btn btn-ghost" id="ms-back" href="#">← Studio</a>
-          <a class="btn btn-primary" id="ms-download" href="#" download>Download .md</a>
+          <a class="btn btn-ghost" id="ms-download" href="#" download>Download .md</a>
+          <a class="btn btn-primary" id="ms-publish" href="#">Publish to KDP</a>
         </div>
       </div>
 
@@ -539,5 +541,8 @@
        helper. Self-contained; loaded before app.js so window.BWNav is ready. -->
   <script src="/palette.js" defer></script>
   <script src="/app.js" defer></script>
+  <!-- "Publish to KDP" screen (Views.publish). Loaded after app.js so the
+       Views / API / Covers globals it reuses are already defined. -->
+  <script src="/kdp.js" defer></script>
 </body>
 </html>
