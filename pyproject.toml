@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "bookwriterpro"
 version = "0.1.0"
 description = "Token-cost-optimized local book generation with a continuity knowledge graph."
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = ["anthropic>=0.69"]
 

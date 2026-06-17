@@ -8,7 +8,14 @@
 
 A local‑first book‑generation studio with a beautiful editorial UI, an HTTP API, and a Model‑Context‑Protocol server — so a human *or an AI agent* can use it as a tool.
 
-[Quick start](#-quick-start-60-seconds) · [Features](#-what-makes-it-special) · [Use it as an agent tool](#-use-it-as-an-agent-tool-mcp) · [Architecture](#-how-it-works) · [The cost story](#-engineered-for-minimum-token-cost)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-37%20passing-2ea44f)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![MCP](https://img.shields.io/badge/MCP-10%20tools-7c3aed)
+![Build](https://img.shields.io/badge/build-none%20%C2%B7%20vanilla%20JS-orange)
+![Design panel](https://img.shields.io/badge/design%20panel-9%2F10-e8624e)
+
+[Quick start](#-quick-start-60-seconds) · [Features](#-why-youll-love-it) · [Use it as an agent tool](#-use-it-as-an-agent-tool-mcp) · [Architecture](#-how-it-works) · [The cost story](#-engineered-for-minimum-token-cost)
 
 </div>
 
@@ -19,6 +26,16 @@ A local‑first book‑generation studio with a beautiful editorial UI, an HTTP 
 ![The Library](docs/screenshots/library-light.png)
 
 *A bookshelf you actually want to browse — every cover is generated, not stock.*
+
+</div>
+
+<div align="center">
+
+### 🪄 Your book cover designs itself as you type
+
+![Live cover forge](docs/screenshots/cover-forge.gif)
+
+*No stock art, no upload — a real procedural jacket forged live in the browser.*
 
 </div>
 
@@ -38,9 +55,9 @@ Most "AI writer" apps give you a chat box and a wall of text. BookwriterPro give
 
 <div align="center">
 
-| Forge your cover as you type | Watch chapters stream live |
+| Watch chapters stream live | Light *and* dark, both first‑class |
 |---|---|
-| ![Live cover forge](docs/screenshots/composer-forge.png) | ![Live streaming studio](docs/screenshots/studio-streaming.png) |
+| ![Live streaming studio](docs/screenshots/studio-streaming.png) | ![Dark mode library](docs/screenshots/library-dark.png) |
 | **Read it like a real book** | **Trace the story's web** |
 | ![3D page-turn reader](docs/screenshots/manuscript-reader.png) | ![Character graph](docs/screenshots/graph-focus.png) |
 
