@@ -64,10 +64,10 @@
     </nav>
 
     <div class="topbar-right">
-      <span class="api-pill" id="api-pill" title="API key status">
+      <button class="api-pill" id="api-pill" type="button" title="Connect a provider — open Settings" data-action="open-settings">
         <span class="dot" aria-hidden="true"></span>
         <span id="api-pill-text">checking…</span>
-      </span>
+      </button>
       <button class="icon-btn" id="settings-btn" type="button"
               aria-label="Settings" title="Settings — API keys & providers" data-action="open-settings">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -710,14 +710,21 @@
           <form id="settings-form" class="create-form" novalidate>
             <p class="settings-intro">Connect an account to generate. Keys are stored locally in your data folder and are only ever sent to the provider you pick.</p>
 
+            <p class="settings-status" id="set-status" hidden></p>
+
             <div class="field">
               <label for="set-llm">Default writing model</label>
               <select id="set-llm" data-opt="BOOKWRITER_LLM_PROVIDER"></select>
-              <p class="field-hint" id="set-llm-hint"></p>
+              <p class="field-hint" id="set-llm-hint">This is what new books use by default — you can also change it per book.</p>
             </div>
 
             <fieldset class="field settings-fieldset">
-              <legend>API keys</legend>
+              <legend>Use a subscription <span class="opt">no API key — generate on your monthly plan</span></legend>
+              <div class="settings-keys" id="set-subs"></div>
+            </fieldset>
+
+            <fieldset class="field settings-fieldset">
+              <legend>API keys <span class="opt">pay-as-you-go</span></legend>
               <div class="settings-keys" id="set-keys"></div>
             </fieldset>
 

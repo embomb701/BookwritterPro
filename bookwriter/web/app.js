@@ -929,6 +929,15 @@ const SettingsModal = {
     { name: "OPENROUTER_API_KEY", label: "OpenRouter API key", kind: "llm", provider: "openrouter", ph: "sk-or-…" },
     { name: "PIXIO_API_KEY", label: "Pixio API key — chapter images", kind: "image", provider: "pixio", ph: "pxio_live_…" },
   ],
+  // Subscription backends — auth lives in the vendor CLI (you sign in once in a
+  // terminal); we detect the CLI and let you pick it as your writing model.
+  SUBS: [
+    { provider: "claude-cli", label: "Claude — Pro / Max", signin: "Install Claude Code, then run `claude` and use /login (or `claude setup-token`)." },
+    { provider: "codex", label: "ChatGPT — Plus / Pro", signin: "Install the OpenAI Codex CLI, then run `codex login` and choose “Sign in with ChatGPT”." },
+    { provider: "grok-cli", label: "Grok — X Premium / SuperGrok", signin: "Install a Grok CLI and sign in; set its command under Advanced if it isn’t `grok`." },
+  ],
+
+  _provById(id) { return ((SettingsModal.data && SettingsModal.data.llm.providers) || []).find((p) => p.id === id); },
 
   async open() {
     if (SettingsModal.el) return;
@@ -978,6 +987,10 @@ const SettingsModal = {
       llm.appendChild(o);
     });
     llm.value = d.options.BOOKWRITER_LLM_PROVIDER || d.llm.selected || "anthropic";
+    llm.onchange = () => SettingsModal.renderStatus(node);
+
+    SettingsModal.renderStatus(node);
+    SettingsModal.renderSubs(node);
 
     // Image provider + custom-http fields.
     node.querySelector("#set-img").value = d.options.BOOKWRITER_IMAGE_PROVIDER || d.image.provider || "pixio";
@@ -1018,6 +1031,53 @@ const SettingsModal = {
 
   toggleHttp(node) {
     node.querySelector("#set-http").hidden = node.querySelector("#set-img").value !== "http";
+  },
+
+  // Banner: is the currently-selected default writing model ready to generate?
+  renderStatus(node) {
+    const el = node.querySelector("#set-status");
+    if (!el) return;
+    const sel = node.querySelector("#set-llm").value;
+    const prov = SettingsModal._provById(sel);
+    el.hidden = false;
+    if (prov && prov.available) {
+      el.className = "settings-status is-ok";
+      el.textContent = `Ready to generate with ${prov.label}.`;
+    } else {
+      el.className = "settings-status is-warn";
+      el.textContent = `“${prov ? prov.label : sel}” isn’t connected yet — add its key or pick a connected provider below. Until then new books run in Demo mode.`;
+    }
+  },
+
+  renderSubs(node) {
+    const wrap = node.querySelector("#set-subs");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    SettingsModal.SUBS.forEach((s) => {
+      const prov = SettingsModal._provById(s.provider);
+      const found = !!(prov && prov.available);
+      const row = document.createElement("div");
+      row.className = "set-key-row";
+      row.dataset.kind = "llm"; row.dataset.provider = s.provider;
+      row.innerHTML =
+        `<div class="set-key-head"><label>${esc(s.label)}</label>` +
+        `<span class="set-badge ${found ? "is-saved" : "is-unset"}">${found ? "CLI detected" : "Not found"}</span></div>` +
+        `<div class="set-key-input">` +
+        `<button type="button" class="btn btn-ghost set-use">Use for writing</button>` +
+        `<button type="button" class="btn btn-ghost set-test">Test</button>` +
+        `</div>` +
+        `<p class="field-hint set-key-detail">${esc(s.signin)}</p>`;
+      row.querySelector(".set-use").addEventListener("click", () => SettingsModal.useProvider(node, s.provider));
+      row.querySelector(".set-test").addEventListener("click", () => SettingsModal.test(node, row));
+      wrap.appendChild(row);
+    });
+  },
+
+  async useProvider(node, provider) {
+    node.querySelector("#set-llm").value = provider;
+    await SettingsModal.save(node);          // persists BOOKWRITER_LLM_PROVIDER + refreshes pill
+    SettingsModal.renderStatus(node);
+    toast(`New books will write with ${provider}.`, { type: "good" });
   },
 
   collectValues(node) {
