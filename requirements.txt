@@ -1,0 +1,3 @@
+# Runtime dependency for live generation only. The package imports and its test
+# suite runs with zero third-party installs (the LLM client is mockable).
+anthropic>=0.69

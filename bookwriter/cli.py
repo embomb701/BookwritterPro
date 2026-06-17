@@ -1,0 +1,183 @@
+"""Command-line interface.
+
+    python -m bookwriter plan      --premise "..." --chapters 12 --project ./mybook
+    python -m bookwriter write     --project ./mybook
+    python -m bookwriter generate  --premise-file premise.txt --project ./mybook
+    python -m bookwriter report    --project ./mybook
+    python -m bookwriter profiles
+
+Add ``--mock`` to any generating command to run the whole pipeline offline
+(no API key, simulated tokens) — useful for trying the flow and seeing the cost
+report shape before spending anything.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from typing import List, Optional
+
+from .config import Settings, QUALITY_PROFILES, MODEL_PRICES
+from .llm import LLM
+from .mock import MockLLM
+from .pipeline import BookPipeline
+from .store import BookStore
+
+
+def _make_llm(args) -> LLM:
+    if args.mock:
+        return MockLLM()
+    from .llm import AnthropicLLM
+    return AnthropicLLM(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+
+def _make_settings(args) -> Settings:
+    s = Settings(project_dir=args.project).with_profile(args.profile)
+    if getattr(args, "no_cache", False):
+        s.use_cache = False
+    if getattr(args, "no_check", False):
+        s.run_continuity_check = False
+    return s
+
+
+def _parse_only(value: Optional[str]) -> Optional[List[int]]:
+    if not value:
+        return None
+    out: List[int] = []
+    for part in value.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = part.split("-")
+            out.extend(range(int(a), int(b) + 1))
+        elif part:
+            out.append(int(part))
+    return out or None
+
+
+def _read_premise(args) -> str:
+    if args.premise_file:
+        with open(args.premise_file, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    if args.premise:
+        return args.premise
+    raise SystemExit("error: provide --premise or --premise-file")
+
+
+def cmd_plan(args) -> int:
+    settings = _make_settings(args)
+    pipe = BookPipeline(_make_llm(args), settings, progress=print)
+    pipe.plan(
+        premise=_read_premise(args), chapters=args.chapters,
+        words_per_chapter=args.words, title=args.title, genre=args.genre,
+        extra_guidance=args.guidance or "",
+    )
+    print(f"\nPlan saved to {os.path.join(args.project, 'book.json')}")
+    print(pipe.ledger.report())
+    return 0
+
+
+def cmd_write(args) -> int:
+    settings = _make_settings(args)
+    pipe = BookPipeline(_make_llm(args), settings, progress=print)
+    if not pipe.load():
+        raise SystemExit("error: no plan found in project; run 'plan' first")
+    pipe.write_all(resume=not args.restart, only=_parse_only(args.only))
+    print("\n" + pipe.ledger.report())
+    return 0
+
+
+def cmd_generate(args) -> int:
+    settings = _make_settings(args)
+    pipe = BookPipeline(_make_llm(args), settings, progress=print)
+    pipe.plan(
+        premise=_read_premise(args), chapters=args.chapters,
+        words_per_chapter=args.words, title=args.title, genre=args.genre,
+        extra_guidance=args.guidance or "",
+    )
+    pipe.write_all(resume=True, only=_parse_only(args.only))
+    print("\n" + pipe.ledger.report())
+    return 0
+
+
+def cmd_report(args) -> int:
+    store = BookStore(args.project)
+    path = os.path.join(args.project, "cost.txt")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            print(f.read())
+    else:
+        print("No cost report yet. Run a generation first.")
+    graph = store.load_graph()
+    if graph:
+        written = len(graph.chapters)
+        total = len(graph.bible.outline)
+        print(f"\nProgress: {written}/{total} chapters written.")
+    return 0
+
+
+def cmd_profiles(_args) -> int:
+    print("Quality profiles (stage -> model):\n")
+    for name, p in QUALITY_PROFILES.items():
+        print(f"  {name}")
+        for stage in ("plan", "write", "extract", "check"):
+            sm = getattr(p, stage)
+            price = MODEL_PRICES.get(sm.model)
+            cost = f"${price.input}/{price.output} per 1M" if price else "?"
+            print(f"    {stage:<8} {sm.model:<20} effort={sm.effort:<7} ({cost})")
+        print()
+    print("Pricing note: cache reads cost ~0.1x input; the bible prefix is cached,")
+    print("so per-chapter context is paid at ~10% after the first chapter.")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="bookwriter", description="Token-cost-optimized book generator.")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    def add_common(sp, *, generating=True):
+        sp.add_argument("--project", default="./book", help="project directory (default ./book)")
+        if generating:
+            sp.add_argument("--profile", default="balanced", choices=list(QUALITY_PROFILES))
+            sp.add_argument("--mock", action="store_true", help="run offline with a mock model")
+            sp.add_argument("--no-cache", action="store_true", help="disable prompt caching of the bible")
+            sp.add_argument("--no-check", action="store_true", help="skip the continuity-check stage")
+
+    def add_plan_args(sp):
+        sp.add_argument("--premise", help="one-line or paragraph premise")
+        sp.add_argument("--premise-file", help="read premise from a file")
+        sp.add_argument("--chapters", type=int, default=None, help="number of chapters")
+        sp.add_argument("--words", type=int, default=2000, help="target words per chapter")
+        sp.add_argument("--title", default=None)
+        sp.add_argument("--genre", default=None)
+        sp.add_argument("--guidance", default=None, help="extra planning guidance")
+
+    sp = sub.add_parser("plan", help="design the bible + outline")
+    add_common(sp); add_plan_args(sp); sp.set_defaults(func=cmd_plan)
+
+    sp = sub.add_parser("write", help="write chapters from an existing plan")
+    add_common(sp)
+    sp.add_argument("--only", help="chapter selection, e.g. '1,3,5-7'")
+    sp.add_argument("--restart", action="store_true", help="rewrite even already-written chapters")
+    sp.set_defaults(func=cmd_write)
+
+    sp = sub.add_parser("generate", help="plan then write the whole book")
+    add_common(sp); add_plan_args(sp)
+    sp.add_argument("--only", help="restrict writing to a chapter selection")
+    sp.set_defaults(func=cmd_generate)
+
+    sp = sub.add_parser("report", help="show the latest cost report + progress")
+    add_common(sp, generating=False); sp.set_defaults(func=cmd_report)
+
+    sp = sub.add_parser("profiles", help="list quality profiles and pricing")
+    sp.set_defaults(func=cmd_profiles)
+
+    return p
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Apply the stored/preferred theme before first paint so a dark-mode user
+       never sees a flash of light. Mirrors initTheme() in app.js. -->
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("bw-theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.setAttribute("data-theme", stored || (prefersDark ? "dark" : "light"));
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Bookwriter Pro — write a whole book, one ledger</title>
+  <meta name="description" content="A local book-generation studio. Plan a bible, watch chapters stream, track every token." />
+
+  <!-- Fonts: elegant serif display (Fraunces) + clean text face (Inter). System fallbacks in CSS. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" />
+
+  <link rel="stylesheet" href="/styles.css" />
+
+  <!-- Crafted book favicon: a cream bookmark ribbon on a brand-crimson tile. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b5322b'/%3E%3Cpath d='M11 6h10v20l-5-4-5 4z' fill='%23f4ece0'/%3E%3C/svg%3E" />
+  <!-- Per-theme browser chrome color. -->
+  <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#191210" media="(prefers-color-scheme: dark)" />
+  <!-- Social / share cards. -->
+  <meta property="og:title" content="BookwriterPro" />
+  <meta property="og:description" content="A local book-generation studio. Plan a story bible, watch chapters stream in live, and track every token." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="BookwriterPro" />
+  <meta name="twitter:description" content="Plan a story bible, watch chapters stream in live, track every token." />
+</head>
+<body>
+  <!-- Faint paper-grain overlay (purely decorative, fixed, non-interactive). -->
+  <div class="grain-overlay" aria-hidden="true"></div>
+
+  <!-- ============================ TOPBAR ============================ -->
+  <header class="topbar" role="banner">
+    <a class="brand" href="#/" aria-label="Bookwriter Pro home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="28" height="28">
+          <path d="M5 6c3-2 8-2 11 0 3-2 8-2 11 0v20c-3-2-8-2-11 0-3-2-8-2-11 0V6z"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <line x1="16" y1="6" x2="16" y2="26" stroke="currentColor" stroke-width="2"/>
+        </svg>
+      </span>
+      <span class="brand-text">Bookwriter<em>Pro</em></span>
+    </a>
+
+    <nav class="topnav" aria-label="Primary">
+      <a href="#/" data-nav="library">Library</a>
+      <a href="#/new" data-nav="new">New book</a>
+    </nav>
+
+    <div class="topbar-right">
+      <span class="api-pill" id="api-pill" title="API key status">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="api-pill-text">checking…</span>
+      </span>
+      <button class="icon-btn theme-toggle" id="theme-toggle" type="button"
+              aria-label="Toggle dark mode" title="Toggle theme">
+        <svg class="i-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/>
+            <line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/>
+            <line x1="5.2" y1="5.2" x2="7" y2="7"/><line x1="17" y1="17" x2="18.8" y2="18.8"/>
+            <line x1="18.8" y1="5.2" x2="17" y2="7"/><line x1="7" y1="17" x2="5.2" y2="18.8"/>
+          </g>
+        </svg>
+        <svg class="i-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M20 14.5A8 8 0 1 1 9.5 4a6.4 6.4 0 0 0 10.5 10.5z"
+                fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============================ MAIN ============================ -->
+  <main id="app" class="app" role="main"></main>
+
+  <!-- Polite status line for assistive tech: short summaries only (e.g.
+       "Writing chapter 3", "Chapter 3 complete"), never the streaming prose. -->
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ============================ TEMPLATES ============================ -->
+
+  <!-- Library view -->
+  <template id="tpl-library">
+    <section class="view view-library">
+      <div class="page-head library-head">
+        <div class="library-masthead">
+          <p class="eyebrow">Your shelf</p>
+          <h1 class="display">The Library</h1>
+          <p class="library-sub" id="library-sub">Every book you’ve dreamed up, bound and waiting.</p>
+          <dl class="shelf-stats" id="shelf-stats" hidden></dl>
+        </div>
+        <a class="btn btn-primary" href="#/new">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          New book
+        </a>
+      </div>
+
+      <!-- Hero: a "continue writing" spotlight staged like a lit display niche.
+           A confident TWO-ZONE composition: the featured book stands large on
+           a ledge to the LEFT; a single content zone FILLS the rest of the band
+           (eyebrow + title + logline + progress + CTA), capped and anchored so
+           it never strands a dead gap on ultra-wide screens. A proper, legible
+           "recently bound" spine shelf sits along the bottom of the content zone
+           as an intentional part of the composition (not a far-right filler).
+           ids/classes here are populated by renderLibraryHero — do not rename. -->
+      <a class="library-hero" id="library-hero" href="#" hidden>
+        <span class="hero-glow" aria-hidden="true"></span>
+        <div class="hero-stage" aria-hidden="true">
+          <div class="hero-book">
+            <!-- .hero-cover is repainted (innerHTML) by paintCover; the foil
+                 spine + fore-edge live on the wrapper so they survive repaint. -->
+            <div class="hero-cover" data-cover></div>
+            <span class="hero-cover-spine"></span>
+            <span class="hero-cover-edge"></span>
+          </div>
+        </div>
+        <div class="hero-content">
+          <div class="hero-body">
+            <p class="eyebrow" id="hero-eyebrow">Continue writing</p>
+            <h2 class="display hero-title" id="hero-title"></h2>
+            <p class="hero-logline" id="hero-logline"></p>
+            <div class="hero-meta">
+              <div class="hero-progress"><span class="hero-progress-fill" id="hero-progress-fill"></span></div>
+              <span class="hero-progress-label" id="hero-progress-label"></span>
+            </div>
+            <span class="hero-cta">Open in the studio
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            </span>
+          </div>
+          <!-- Recently bound: a proper anchored shelf of larger, legible spines,
+               standing on a ledge. Hidden by renderLibraryHero when the shelf has
+               only the featured book. -->
+          <div class="hero-shelf" id="hero-shelf" aria-hidden="true">
+            <p class="hero-shelf-label">Also on your shelf</p>
+            <div class="hero-spines" id="hero-spines"></div>
+          </div>
+        </div>
+      </a>
+
+      <div class="book-grid" id="book-grid"></div>
+    </section>
+  </template>
+
+  <!-- Library empty state -->
+  <template id="tpl-library-empty">
+    <div class="empty-state empty-shelf">
+      <div class="empty-illus" aria-hidden="true">
+        <svg viewBox="0 0 320 200" width="340" height="212" class="shelf-illus">
+          <!-- shelf plank -->
+          <rect x="20" y="150" width="280" height="12" rx="3" class="es-plank"/>
+          <rect x="34" y="162" width="252" height="6" rx="2" class="es-plank-shadow"/>
+          <!-- leaning books -->
+          <g class="es-stack">
+            <rect x="48"  y="74"  width="34" height="76" rx="3" class="es-book"/>
+            <rect x="84"  y="58"  width="30" height="92" rx="3" class="es-book es-book-2"/>
+            <rect x="116" y="86"  width="32" height="64" rx="3" class="es-book es-book-3"/>
+            <!-- a leaning book -->
+            <g transform="rotate(11 168 150)">
+              <rect x="150" y="82" width="30" height="68" rx="3" class="es-book es-book-2"/>
+            </g>
+            <rect x="196" y="66" width="34" height="84" rx="3" class="es-book es-book-3"/>
+            <rect x="232" y="92" width="30" height="58" rx="3" class="es-book"/>
+            <!-- foil rules on spines -->
+            <line x1="52"  y1="92"  x2="78"  y2="92"  class="es-foil"/>
+            <line x1="88"  y1="78"  x2="110" y2="78"  class="es-foil"/>
+            <line x1="200" y1="86"  x2="226" y2="86"  class="es-foil"/>
+          </g>
+          <!-- a quiet quill above the gap -->
+          <g class="es-quill" transform="translate(150 30)">
+            <path d="M0 28 C 10 14 24 -6 32 -8 C 26 6 18 18 0 28 Z" class="es-quill-fill"/>
+            <path d="M0 28 L -6 34" class="es-quill-stem"/>
+          </g>
+        </svg>
+      </div>
+      <h2 class="serif">An empty shelf, full of possibility.</h2>
+      <p>You haven’t written anything yet. Start with a premise — a sentence is enough — and watch a whole book take shape, chapter by chapter, with a cover all its own.</p>
+      <a class="btn btn-primary btn-lg" href="#/new">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Begin your first book
+      </a>
+    </div>
+  </template>
+
+  <!-- New book composer -->
+  <template id="tpl-new">
+    <section class="view view-new">
+      <div class="composer-shell">
+        <div class="composer-head">
+          <p class="eyebrow">New manuscript</p>
+          <h1 class="display">Begin with a premise.</h1>
+          <p class="lede">Give the engine a seed. It plans a story bible, an act structure, and a chapter outline — then writes the prose live.</p>
+        </div>
+
+      <div class="composer-layout">
+        <!-- LIVE COVER FORGE: a procedurally-generated jacket that designs itself
+             as the title/genre are typed (debounced, reduced-motion-safe). -->
+        <aside class="forge" aria-label="Live cover preview">
+          <div class="forge-stage">
+            <div class="forge-book" id="forge-book">
+              <div class="forge-cover" id="forge-cover" data-cover aria-hidden="true"></div>
+              <!-- Empty state: a crisp dashed book-silhouette frame (2:3) with a
+                   faint decorative ghost jacket behind a centred glyph + caption,
+                   so the pane reads as "a book waiting to be designed". -->
+              <div class="forge-empty" id="forge-empty">
+                <div class="forge-empty-ghost" id="forge-empty-ghost" aria-hidden="true"></div>
+                <div class="forge-empty-inner">
+                  <span class="forge-empty-glyph" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 6c3-2 8-2 11 0 3-2 8-2 11 0v15c-3-2-8-2-11 0-3-2-8-2-11 0V6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><line x1="16" y1="6" x2="16" y2="21" stroke="currentColor" stroke-width="1.5"/></svg>
+                  </span>
+                  <p>Your cover takes shape<br>as you type.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="forge-caption" id="forge-caption">Live cover preview</p>
+        </aside>
+
+        <form id="new-form" class="composer" novalidate>
+          <div class="field field-hero">
+            <label for="f-premise">Premise <span class="req">*</span></label>
+            <textarea id="f-premise" name="premise" rows="4" required
+              placeholder="A lighthouse keeper on a dying coast discovers the light is the only thing holding back something in the water…"></textarea>
+            <p class="field-hint">One or two sentences. The richer the seed, the richer the bible.</p>
+          </div>
+
+          <!-- Title is full-width on its own row so a normal book title is never
+               visually clipped — keeping the input and the live cover in visible
+               agreement (what-you-type-is-what-you-get). -->
+          <div class="field field-title">
+            <label for="f-title">Title <span class="opt">optional</span></label>
+            <input id="f-title" name="title" type="text" placeholder="Auto-generated if blank" />
+          </div>
+
+          <div class="field-row field-row-3">
+            <div class="field">
+              <label for="f-genre">Genre <span class="opt">optional</span></label>
+              <input id="f-genre" name="genre" type="text" placeholder="Literary horror, cozy mystery…" />
+            </div>
+            <div class="field">
+              <label for="f-chapters">Chapters</label>
+              <input id="f-chapters" name="chapters" type="number" min="1" max="60" placeholder="auto" />
+              <p class="field-hint">Leave blank to let the planner decide.</p>
+            </div>
+            <div class="field">
+              <label for="f-wpc">Words / chapter</label>
+              <input id="f-wpc" name="words_per_chapter" type="number" min="400" max="8000" step="100" value="2000" />
+              <p class="field-hint" id="wpc-estimate">~ a full-length book.</p>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f-guidance">Guidance <span class="opt">optional</span></label>
+            <textarea id="f-guidance" name="guidance" rows="2"
+              placeholder="Tone, comparisons, things to avoid… e.g. 'spare prose à la Le Guin, no neat ending.'"></textarea>
+          </div>
+
+          <fieldset class="field profiles">
+            <legend>Quality profile</legend>
+            <div class="profile-grid" id="profile-grid" role="radiogroup" aria-label="Quality profile"></div>
+          </fieldset>
+
+          <div class="composer-foot">
+            <label class="switch" for="f-mock">
+              <input type="checkbox" id="f-mock" name="mock" />
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              <span class="switch-label">
+                <strong>Demo mode</strong>
+                <span class="switch-sub">Generate offline with simulated prose — no API key needed.</span>
+              </span>
+            </label>
+
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <div class="advanced-body">
+                <label class="check"><input type="checkbox" id="f-cache" checked /> Prompt caching <span class="muted">(cheaper, recommended)</span></label>
+                <label class="check"><input type="checkbox" id="f-continuity" checked /> Continuity checking <span class="muted">(flags plot holes)</span></label>
+              </div>
+            </details>
+
+            <div class="composer-actions">
+              <button type="submit" class="btn btn-primary btn-lg" id="plan-btn">
+                <span class="btn-label">Plan this book</span>
+                <span class="btn-spinner" aria-hidden="true"></span>
+              </button>
+              <p class="composer-note" id="composer-note"></p>
+            </div>
+          </div>
+        </form>
+      </div>
+      </div>
+    </section>
+  </template>
+
+  <!-- Studio view -->
+  <template id="tpl-studio">
+    <section class="view view-studio">
+      <div class="studio-head">
+        <div class="studio-hero">
+          <div class="studio-cover" id="studio-cover" aria-hidden="true"></div>
+          <div class="studio-title-wrap">
+            <p class="eyebrow" id="studio-genre">—</p>
+            <h1 class="display" id="studio-title">…</h1>
+            <p class="studio-logline" id="studio-logline"></p>
+          </div>
+        </div>
+        <div class="studio-head-actions">
+          <nav class="studio-tabs" aria-label="Book views">
+            <a class="tab is-active" href="#" data-tab="studio" aria-current="page">Studio</a>
+            <a class="tab" href="#" data-tab="graph">Story graph</a>
+            <a class="tab" href="#" data-tab="manuscript">Manuscript</a>
+          </nav>
+          <button class="btn btn-primary" id="generate-btn" type="button">
+            <span class="btn-label">Generate</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="studio-progress">
+        <div class="progress-track"><div class="progress-fill" id="studio-progress-fill"></div></div>
+        <span class="progress-label" id="studio-progress-label">0 of 0 chapters</span>
+      </div>
+
+      <div class="studio-grid">
+        <!-- LEFT: outline -->
+        <aside class="studio-rail studio-outline" aria-label="Chapter outline">
+          <h2 class="rail-title">Outline</h2>
+          <ol class="chapter-list" id="chapter-list"></ol>
+        </aside>
+
+        <!-- CENTER: live reader -->
+        <div class="studio-reader">
+          <div class="reader-head">
+            <span class="reader-chip" id="reader-act">Act —</span>
+            <h2 class="reader-title serif" id="reader-title">Select a chapter</h2>
+            <span class="reader-words" id="reader-words"></span>
+          </div>
+          <article class="reader-body" id="reader-body" tabindex="0" aria-label="Chapter prose">
+            <div class="reader-placeholder" id="reader-placeholder">
+              <p class="serif">Your story will appear here.</p>
+              <p>Press <strong>Generate</strong> to plan-and-write live, or pick a written chapter from the outline.</p>
+            </div>
+          </article>
+          <div class="reader-flags" id="reader-flags" hidden></div>
+        </div>
+
+        <!-- RIGHT: continuity + cost -->
+        <aside class="studio-rail studio-meta" aria-label="Continuity and cost">
+          <section class="cost-card">
+            <h2 class="rail-title">Progress &amp; cost</h2>
+
+            <!-- HERO: cost (the product USP, kept prominent but elegant). An
+                 eyebrow labels it; the headline shows a clean 2dp figure with
+                 the precise 4dp figure as a quiet secondary, so it reads as a
+                 designed widget rather than a debug dollar string. -->
+            <div class="cost-hero">
+              <p class="cost-eyebrow">Est. cost so far</p>
+              <div class="cost-amount">
+                <span class="cost-total" id="cost-total">$0.00</span>
+                <span class="cost-total-fine" id="cost-total-fine">$0.0000</span>
+              </div>
+            </div>
+
+            <!-- Editorial readout: label-left / value-right rows with tabular
+                 figures and calm rhythm, matching the prose column. -->
+            <dl class="cost-readout">
+              <div class="cost-row">
+                <dt>Words written</dt>
+                <dd id="cost-words">0</dd>
+              </div>
+              <div class="cost-row">
+                <dt>Chapters</dt>
+                <dd id="cost-chapters">0 of 0</dd>
+              </div>
+              <div class="cost-row">
+                <dt>Per 1k words</dt>
+                <dd id="cost-per1k">$0.0000</dd>
+              </div>
+            </dl>
+
+            <!-- A slim writing-progress bar tying the readout together. -->
+            <div class="cost-progress">
+              <span class="meter-track"><span class="meter-fill" id="cost-progress-fill"></span></span>
+              <span class="cost-pct" id="cost-pct">0%</span>
+            </div>
+
+            <div class="cache-savings" id="cache-savings" hidden>
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              <span>Saved <strong id="savings-val">$0.00</strong> with prompt caching</span>
+            </div>
+
+            <!-- Token breakdown: clean labeled rows -->
+            <details class="token-details" id="token-details">
+              <summary>
+                <span class="td-summary-label">Token breakdown</span>
+                <span class="td-summary-total" id="token-total">0</span>
+                <svg class="td-caret" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </summary>
+              <div class="token-bars" id="token-bars">
+                <div class="token-bar" data-k="input"><span class="tb-label">Input</span><span class="tb-track"><span class="tb-fill"></span></span><span class="tb-val">0</span></div>
+                <div class="token-bar" data-k="output"><span class="tb-label">Output</span><span class="tb-track"><span class="tb-fill"></span></span><span class="tb-val">0</span></div>
+                <div class="token-bar" data-k="cache_read"><span class="tb-label">Cache read</span><span class="tb-track"><span class="tb-fill"></span></span><span class="tb-val">0</span></div>
+                <div class="token-bar" data-k="cache_write"><span class="tb-label">Cache write</span><span class="tb-track"><span class="tb-fill"></span></span><span class="tb-val">0</span></div>
+              </div>
+            </details>
+          </section>
+
+          <section class="continuity-card">
+            <h2 class="rail-title">Cast</h2>
+            <ul class="cast-list" id="cast-list"></ul>
+            <h2 class="rail-title">Open threads</h2>
+            <ul class="thread-list" id="thread-list"></ul>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </template>
+
+  <!-- Graph view -->
+  <template id="tpl-graph">
+    <section class="view view-graph">
+      <div class="subview-head">
+        <div>
+          <p class="eyebrow" id="graph-book-title">Story graph</p>
+          <h1 class="display">The web of it all</h1>
+        </div>
+        <a class="btn btn-ghost" id="graph-back" href="#">← Back to studio</a>
+      </div>
+      <div class="graph-stage">
+        <svg id="graph-svg" class="graph-svg" role="img" aria-label="Character relationship graph"></svg>
+        <p class="graph-hint">Hover a character to trace their ties</p>
+        <div class="graph-legend">
+          <span><i class="lg-dot lg-pro"></i> Protagonist</span>
+          <span><i class="lg-dot lg-ant"></i> Antagonist</span>
+          <span><i class="lg-dot lg-sup"></i> Supporting</span>
+          <span><i class="lg-line"></i> Relationship</span>
+        </div>
+      </div>
+      <div class="graph-threads">
+        <h2 class="rail-title">Plot threads</h2>
+        <ul class="thread-board" id="graph-threads"></ul>
+      </div>
+    </section>
+  </template>
+
+  <!-- Manuscript view -->
+  <template id="tpl-manuscript">
+    <section class="view view-manuscript">
+      <div class="subview-head">
+        <div>
+          <p class="eyebrow" id="ms-meta">Manuscript</p>
+          <h1 class="display" id="ms-title">…</h1>
+        </div>
+        <div class="subview-actions">
+          <button class="btn btn-ghost" id="ms-mode" type="button" aria-pressed="false">Plain view</button>
+          <a class="btn btn-ghost" id="ms-back" href="#">← Studio</a>
+          <a class="btn btn-primary" id="ms-download" href="#" download>Download .md</a>
+        </div>
+      </div>
+
+      <!-- BOOK READER (default on desktop): a real flippable 3D book. -->
+      <div class="reader-stage" id="reader-stage">
+        <button class="reader-nav reader-prev" id="reader-prev" type="button" aria-label="Previous page" hidden>
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="reader-book" id="reader-book" tabindex="0" role="group"
+             aria-roledescription="book reader" aria-label="Book reader. Use left and right arrow keys to turn pages."></div>
+        <button class="reader-nav reader-next" id="reader-next" type="button" aria-label="Next page" hidden>
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="reader-tray" id="reader-tray" hidden>
+        <input class="reader-scrubber" id="reader-scrubber" type="range" min="0" max="0" value="0" step="1" aria-label="Page position">
+        <span class="reader-readout" id="reader-readout" aria-hidden="true">Cover</span>
+      </div>
+
+      <!-- PLAIN VIEW (scrolled column; assistive-tech / scrolling escape hatch). -->
+      <div class="manuscript-plain" id="manuscript-plain" hidden>
+        <div class="manuscript-hero" id="manuscript-cover" aria-hidden="true"></div>
+        <p class="manuscript-colophon" id="manuscript-colophon" hidden></p>
+        <article class="manuscript-paper" id="manuscript-paper"></article>
+      </div>
+    </section>
+  </template>
+
+  <!-- Book card (cloned per book) -->
+  <template id="tpl-book-card">
+    <a class="book-card" href="#">
+      <div class="card-cover" aria-hidden="true">
+        <div class="cover-art" data-cover></div>
+        <span class="card-badge card-mock" hidden>Demo</span>
+      </div>
+      <div class="card-body">
+        <div class="card-top">
+          <span class="card-genre"></span>
+        </div>
+        <h3 class="card-title serif"></h3>
+        <p class="card-logline"></p>
+        <div class="card-foot">
+          <div class="ring" aria-hidden="true">
+            <svg viewBox="0 0 44 44" width="44" height="44">
+              <circle class="ring-bg" cx="22" cy="22" r="18" fill="none" stroke-width="4"/>
+              <circle class="ring-fg" cx="22" cy="22" r="18" fill="none" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+            <span class="ring-label"></span>
+          </div>
+          <div class="card-stats">
+            <span class="card-chapters"></span>
+            <span class="card-cost"></span>
+          </div>
+        </div>
+      </div>
+    </a>
+  </template>
+
+  <!-- Toast region -->
+  <div class="toast-region" id="toast-region" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- Procedural book covers (deterministic, seeded from book id/title). -->
+  <script src="/covers.js" defer></script>
+  <!-- Command palette, global shortcuts, help modal, skip link, view-transition
+       helper. Self-contained; loaded before app.js so window.BWNav is ready. -->
+  <script src="/palette.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

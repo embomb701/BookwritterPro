@@ -1,0 +1,1755 @@
+/* ===========================================================================
+   Bookwriter Pro — editorial / literary UI
+   Warm paper & ink, one ember accent. Fraunces (display) + Inter (text).
+   Design tokens drive light + dark themes. No build step.
+   =========================================================================== */
+
+/* Visually-hidden but available to assistive tech (live status region). */
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+
+/* ----------------------------- TOKENS ----------------------------------- */
+:root {
+  /* Type */
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --font-text: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type scale (1.25 minor third) */
+  --t-xs: 0.75rem;
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.125rem;
+  --t-lg: 1.375rem;
+  --t-xl: 1.75rem;
+  --t-2xl: 2.25rem;
+  --t-3xl: 3rem;
+  --t-4xl: 4rem;
+
+  /* Spacing */
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
+  --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem; --s-9: 6rem;
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 22px;
+
+  /* Light theme — warm paper & ink */
+  --paper: #f6f1e7;
+  --paper-2: #fbf7ef;
+  --surface: #fffdf8;
+  --surface-2: #f0e8d8;
+  --ink: #2a2420;
+  --ink-soft: #5b5048;
+  --ink-faint: #8c8074;
+  --line: #e4dac6;
+  --line-strong: #d6c8ad;
+
+  --accent: #c0392b;          /* ember red */
+  --accent-strong: #9e2b1f;
+  --accent-soft: #f3d9d3;
+  --accent-ink: #fff;
+  /* Light text that sits on a saturated/mid-tone fill (avatars, chips, badges,
+     graph initials). Constant near-white reads well over the warm mid-tones in
+     both themes; routed through a token so it's never a raw literal. */
+  --on-fill: #fdf6ec;
+  /* Off-state of the demo-mode switch thumb. */
+  --switch-off: #fbf6ec;
+  /* Cover-fallback companion (was a hard-coded #2a1410). */
+  --fallback-2: #2a1410;
+  /* Antagonist graph node: a desaturated cool slate-ink, distinctly the
+     heaviest/darkest disc in light. */
+  --node-ant: #36404e;
+
+  --gold: #b08b2e;
+  --good: #3e7d54;
+  --warn: #b5781f;
+  --bad: #b23a30;
+
+  --shadow-sm: 0 1px 2px rgba(60,44,24,.06), 0 1px 3px rgba(60,44,24,.05);
+  --shadow: 0 4px 16px rgba(60,44,24,.08), 0 1px 4px rgba(60,44,24,.06);
+  --shadow-lg: 0 18px 48px rgba(50,36,20,.16), 0 4px 14px rgba(50,36,20,.10);
+
+  --maxw: 1280px;
+  /* Cohesive motion system: one primary easing, one playful spring, two durs. */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --dur: 240ms;
+  --dur-fast: 140ms;
+}
+
+:root[data-theme="dark"] {
+  --paper: #15110e;
+  --paper-2: #1a1512;
+  --surface: #211b16;
+  --surface-2: #2b231c;
+  --ink: #f1e8da;
+  --ink-soft: #c3b6a3;
+  --ink-faint: #8b7e6c;
+  --line: #34291f;
+  --line-strong: #463726;
+
+  --accent: #e8624e;
+  --accent-strong: #f4795f;
+  --accent-soft: #3a201a;
+  --accent-ink: #1a100c;
+
+  --gold: #d8b25a;
+  /* A brighter gold for the writing-state chapter numeral so dark-on-gold text
+     keeps contrast (the writing chip uses --accent-ink for the numeral). */
+  --good: #6cc090;
+  --warn: #e0a64a;
+  --bad: #ef6c5b;
+
+  --on-fill: #fdf6ec;
+  /* In dark, the switch off-track is --line-strong (#463726); a warm off-white
+     thumb keeps the off-state legible without a foreign pure-white pill. */
+  --switch-off: #cdbfa8;
+  --fallback-2: #1a0c0a;
+  /* In dark, a cool slate that is clearly heavier than the gold support node and
+     never the brightest disc (the old --ink was near-paper -> wrong villain). */
+  --node-ant: #6f7f96;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow: 0 6px 22px rgba(0,0,0,.5);
+  --shadow-lg: 0 22px 60px rgba(0,0,0,.62);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) { color-scheme: dark; }
+}
+
+/* ----------------------------- RESET ------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  font-family: var(--font-text);
+  font-size: var(--t-base);
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper);
+  background-image:
+    radial-gradient(1200px 700px at 85% -8%, var(--accent-soft) 0%, transparent 55%),
+    radial-gradient(900px 600px at -5% 110%, color-mix(in srgb, var(--gold) 16%, transparent) 0%, transparent 50%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+img, svg { display: block; max-width: 100%; }
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+ol, ul { list-style: none; padding: 0; }
+
+h1, h2, h3, h4 { line-height: 1.12; font-weight: 600; }
+.serif { font-family: var(--font-display); }
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2rem, 1.2rem + 3vw, var(--t-4xl));
+  letter-spacing: -0.02em;
+  font-optical-sizing: auto;
+}
+.eyebrow {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  color: var(--accent);
+}
+.lede { font-size: var(--t-md); color: var(--ink-soft); max-width: 56ch; }
+.muted { color: var(--ink-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+/* ----------------------------- TOPBAR ----------------------------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: var(--s-5);
+  padding: var(--s-3) var(--s-5);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  backdrop-filter: saturate(1.4) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: var(--s-3); color: var(--ink); }
+.brand-mark { color: var(--accent); display: grid; place-items: center; }
+.brand-text { font-family: var(--font-display); font-weight: 600; font-size: var(--t-lg); letter-spacing: -0.01em; }
+.brand-text em { font-style: italic; color: var(--accent); }
+
+.topnav { display: flex; gap: var(--s-2); margin-left: var(--s-3); }
+.topnav a {
+  padding: var(--s-2) var(--s-3); border-radius: 999px;
+  font-size: var(--t-sm); font-weight: 500; color: var(--ink-soft);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.topnav a:hover { background: var(--surface-2); color: var(--ink); }
+.topnav a.is-active { background: var(--accent-soft); color: var(--accent-strong); }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s-3); }
+
+.api-pill {
+  display: inline-flex; align-items: center; gap: var(--s-2);
+  font-size: var(--t-xs); font-weight: 500; color: var(--ink-soft);
+  padding: var(--s-2) var(--s-3); border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.api-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink-faint) 22%, transparent); }
+.api-pill.is-live .dot { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
+.api-pill.is-demo .dot { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+
+.icon-btn {
+  display: grid; place-items: center; width: 38px; height: 38px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+  cursor: pointer; color: var(--ink-soft);
+  transition: transform var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.icon-btn:hover { color: var(--accent); border-color: var(--line-strong); transform: translateY(-1px); }
+.theme-toggle .i-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .i-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .i-moon { display: block; }
+
+/* ----------------------------- LAYOUT ----------------------------------- */
+.app { max-width: var(--maxw); margin: 0 auto; padding: var(--s-7) var(--s-5) var(--s-9); }
+.view { animation: viewIn .42s var(--ease) both; }
+@keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.page-head, .subview-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--s-5); margin-bottom: var(--s-6); flex-wrap: wrap;
+}
+.subview-actions { display: flex; gap: var(--s-3); }
+
+/* ----------------------------- BUTTONS ---------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-5); border-radius: 999px;
+  font-weight: 600; font-size: var(--t-sm); cursor: pointer;
+  border: 1px solid transparent; white-space: nowrap;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.btn:active { transform: translateY(1px) scale(.99); }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--accent-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
+.btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.btn-lg { padding: var(--s-4) var(--s-6); font-size: var(--t-base); }
+.btn[disabled], .btn.is-busy { opacity: .65; pointer-events: none; }
+.btn .btn-spinner { display: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor; animation: spin .7s linear infinite; }
+.btn.is-busy .btn-spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ----------------------------- LIBRARY ---------------------------------- */
+.library-masthead .library-sub { color: var(--ink-soft); font-size: var(--t-md); margin-top: var(--s-2); max-width: 48ch; }
+
+/* "Your shelf" stats strip — a quiet editorial readout under the masthead. */
+.shelf-stats { display: grid; grid-template-columns: repeat(4, max-content); gap: var(--s-3) var(--s-6); margin-top: var(--s-4); }
+@media (max-width: 560px) { .shelf-stats { grid-template-columns: repeat(2, 1fr); } }
+.shelf-stat { display: flex; flex-direction: column; gap: 1px; }
+/* Label uses --ink-soft (not --ink-faint) so the small uppercase caption keeps
+   a comfortable contrast against the dark --paper background. */
+.shelf-stat dt { order: 2; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-soft); font-weight: 600; }
+.shelf-stat dd { order: 1; font-family: var(--font-display); font-size: var(--t-xl); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; color: var(--ink); }
+
+/* ===========================================================================
+   HERO SPOTLIGHT — a lit display niche, not a card.
+   The featured book stands large on a ledge (left), an anchored spine shelf
+   frames the right, and the text block fills the centre so the band reads full
+   and deliberate. ids/classes are populated by renderLibraryHero — do not
+   rename: #hero-cover/.hero-cover, #hero-spines, #hero-title, #hero-logline,
+   #hero-eyebrow, #hero-progress-fill, #hero-progress-label.
+   =========================================================================== */
+.library-hero {
+  position: relative; display: grid;
+  /* TWO ZONES: a large standing book (left) + a content zone that fills the rest
+     of the band. No third column — the content zone owns all remaining width, so
+     there is no dead horizontal gap stranded in the middle at any width. */
+  grid-template-columns: clamp(210px, 20vw, 300px) minmax(0, 1fr);
+  gap: clamp(var(--s-6), 4.5vw, var(--s-8));
+  align-items: stretch;
+  margin-bottom: var(--s-8);
+  padding: clamp(var(--s-6), 3.2vw, var(--s-8)) clamp(var(--s-6), 3.2vw, var(--s-8)) clamp(var(--s-7), 3.6vw, var(--s-8));
+  border-radius: var(--radius-lg); color: var(--ink);
+  /* A lit display niche: a warm key-light from upper-left, a gold pool glowing
+     up from the ledge at lower-right, a darkened vignette at the far corners,
+     all over an accent-tinted surface. Reads rich + intentional in light, deep
+     and theatrical in dark — every colour routed through tokens / color-mix. */
+  background:
+    radial-gradient(150% 135% at 6% -16%, color-mix(in srgb, var(--accent-soft) 92%, transparent), transparent 52%),
+    radial-gradient(130% 120% at 98% 120%, color-mix(in srgb, var(--gold) 30%, transparent), transparent 50%),
+    radial-gradient(160% 150% at 50% 116%, transparent 60%, color-mix(in srgb, var(--ink) 12%, transparent)),
+    linear-gradient(168deg, color-mix(in srgb, var(--surface) 86%, var(--accent-soft)), var(--surface) 64%, color-mix(in srgb, var(--surface) 88%, var(--gold)));
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+  overflow: hidden; isolation: isolate;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+/* A refined inner border (lit niche rim) sitting just inside the band edge, plus
+   a faint linen/paper tooth across the field so it reads as a surface, not a
+   flat fill. Decorative, theme-aware, non-interactive. */
+.library-hero::before {
+  content: ""; position: absolute; inset: clamp(7px, .7vw, 11px); z-index: 0; pointer-events: none;
+  border-radius: calc(var(--radius-lg) - 8px);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 60%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 80%, #fff), inset 0 -24px 40px -28px color-mix(in srgb, var(--ink) 50%, transparent);
+  background-image:
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink) 2.5%, transparent) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink) 2%, transparent) 0 1px, transparent 1px 3px);
+  background-blend-mode: multiply;
+  opacity: .9;
+}
+/* The shelf plank/ledge the book + spines stand on, running the full width. */
+.library-hero::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: clamp(16px, 1.7vw, 22px); z-index: 1;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--line-strong) 78%, var(--ink)) 0%,
+      var(--line-strong) 38%,
+      color-mix(in srgb, var(--line-strong) 58%, var(--paper)) 100%);
+  border-top: 1px solid color-mix(in srgb, var(--surface) 70%, #fff);
+  box-shadow: 0 -10px 22px -10px color-mix(in srgb, var(--ink) 36%, transparent);
+}
+.library-hero:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); border-color: var(--line-strong); }
+.library-hero:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* A soft spotlight glow blooming behind the featured book — the "key light" of
+   the niche. Sits above the field but below the book/text. */
+.hero-glow {
+  position: absolute; z-index: 1; left: clamp(-40px, -2vw, -20px); bottom: 8%;
+  width: clamp(280px, 30vw, 440px); height: clamp(280px, 30vw, 440px);
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--gold) 32%, transparent), transparent 70%);
+  filter: blur(8px); opacity: .8;
+}
+
+/* ---- The standing book (visual anchor), ~1.5x larger, on its ledge. ---- */
+.hero-stage {
+  position: relative; z-index: 2; align-self: end; justify-self: center;
+  width: 100%; perspective: 1300px;
+  padding-bottom: clamp(6px, .9vw, 12px);
+}
+.hero-book {
+  position: relative; width: 100%; aspect-ratio: 2 / 3;
+  margin-top: clamp(var(--s-5), 4vw, var(--s-7)); /* lift it tall above the ledge */
+  transform-style: preserve-3d;
+  /* A pronounced standing-book tilt — turned toward the reader, settled on the
+     ledge. The drop shadow grounds it; the body shadow gives it heft. */
+  transform: rotateY(-13deg) rotateX(2deg);
+  transform-origin: left center;
+  animation: heroBookRise .8s var(--ease-spring) both;
+  transition: transform .45s var(--ease-spring);
+}
+.library-hero:hover .hero-book { transform: rotateY(-8deg) rotateX(1deg) translateY(-4px); }
+/* .hero-cover is the painted face (paintCover replaces its innerHTML). */
+.hero-cover {
+  position: absolute; inset: 0; border-radius: 3px 8px 8px 3px; overflow: hidden;
+  box-shadow:
+    14px 18px 34px -14px color-mix(in srgb, var(--ink) 60%, transparent),
+    4px 6px 14px -8px color-mix(in srgb, var(--ink) 40%, transparent);
+}
+.hero-cover .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.hero-cover.cover-fallback { display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: var(--s-4); font-family: var(--font-display); font-size: var(--t-lg); color: var(--on-fill);
+  background: linear-gradient(150deg, var(--accent-strong), var(--fallback-2)); }
+/* The lit/shaded cover face — a directional sheen over the artwork. */
+.hero-cover::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(105deg, rgba(255,255,255,.16) 0%, transparent 28%, transparent 72%, rgba(0,0,0,.22) 100%);
+}
+/* The binding groove + foil highlight on the spine edge (left). */
+.hero-cover-spine {
+  position: absolute; left: 0; top: 0; bottom: 0; width: clamp(9px, 1vw, 14px); z-index: 3;
+  border-radius: 3px 0 0 3px; pointer-events: none;
+  background: linear-gradient(90deg, rgba(0,0,0,.42) 0%, rgba(0,0,0,.12) 42%, rgba(255,255,255,.16) 64%, transparent 100%);
+}
+/* The fore-edge page block on the right — a real stack of pages, foil-topped. */
+.hero-cover-edge {
+  position: absolute; right: 0; top: 1.5%; bottom: 1.5%; z-index: 3;
+  width: clamp(9px, 1.1vw, 15px);
+  transform: translateX(94%) rotateY(8deg); transform-origin: left center;
+  border-radius: 0 2px 2px 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    color-mix(in srgb, var(--paper-2) 96%, var(--ink)) 0 1px,
+    var(--paper-2) 1px 2.5px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 35%, transparent),
+    2px 3px 8px -4px color-mix(in srgb, var(--ink) 50%, transparent);
+}
+/* Contact/floor shadow grounding the standing book on the ledge. */
+.hero-book::after {
+  content: ""; position: absolute; left: -2%; right: -10%; bottom: clamp(-14px, -1.2vw, -10px); height: clamp(16px, 1.8vw, 24px);
+  z-index: -1; border-radius: 50%;
+  background: radial-gradient(62% 100% at 46% 50%, color-mix(in srgb, var(--ink) 42%, transparent), transparent 74%);
+  filter: blur(4px); opacity: .6; pointer-events: none;
+}
+
+/* ---- Content zone: owns ALL remaining width. A flex column — the text block
+   sits up top and grows, the "also on your shelf" row anchors along the bottom,
+   so the band reads as one composed unit with no empty centre. ---- */
+.hero-content {
+  position: relative; z-index: 2; min-width: 0; align-self: stretch;
+  display: flex; flex-direction: column; gap: clamp(var(--s-5), 2.4vw, var(--s-7));
+  padding: clamp(var(--s-3), 1.4vw, var(--s-5)) 0 clamp(var(--s-3), 2vw, var(--s-5));
+}
+/* ---- Text block. Capped width keeps the measure elegant; it's then CENTRED in
+   the leftover space (margin-right:auto) rather than clinging left — but because
+   the shelf below spans the full content width, there is never a stranded gap. */
+.hero-body { position: relative; z-index: 2; min-width: 0; flex: 1 1 auto;
+  display: flex; flex-direction: column; justify-content: center;
+  max-width: 62ch; margin-right: auto; }
+.hero-title { font-size: clamp(1.8rem, 1.1rem + 2.8vw, var(--t-3xl)); margin: var(--s-2) 0 var(--s-3); line-height: 1.06;
+  letter-spacing: -.015em;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hero-logline { color: var(--ink-soft); max-width: 54ch; margin-bottom: var(--s-5); font-size: var(--t-md); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* A confident progress widget: taller bar, percentage label, on its own line. */
+.hero-meta { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-5); flex-wrap: wrap; }
+.hero-progress { flex: 1; min-width: 180px; max-width: 340px; height: 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--ink) 4%); overflow: hidden;
+  border: 1px solid var(--line); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--ink) 14%, transparent); }
+.hero-progress-fill { display: block; height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+  box-shadow: 0 0 12px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition: width 1s var(--ease); }
+.hero-progress-label { font-size: var(--t-sm); font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* CTA promoted to a real pill button so the hero ends on a confident action. */
+.hero-cta { display: inline-flex; align-items: center; gap: var(--s-2); font-weight: 700; font-size: var(--t-sm);
+  color: var(--accent-ink); padding: .6em 1.1em; border-radius: 999px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 8%), var(--accent-strong));
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.library-hero:hover .hero-cta { transform: translateY(-1px); box-shadow: 0 10px 22px -8px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent); }
+.library-hero:hover .hero-cta svg { transform: translateX(3px); }
+.hero-cta svg { transition: transform var(--dur) var(--ease); }
+
+/* ---- "Also on your shelf" — a proper, legible anchored shelf running the full
+   width of the content zone along the bottom of the band. A real ledge with a
+   ground shadow; spines are large and readable (Covers.spineSvg renders the
+   title), so the row is an intentional part of the composition, not tiny dim
+   filler clinging to the far right. ---- */
+.hero-shelf {
+  position: relative; z-index: 2; margin-top: auto; pointer-events: none;
+  padding-top: clamp(var(--s-3), 1.4vw, var(--s-4));
+  border-top: 1px dashed color-mix(in srgb, var(--line-strong) 55%, transparent);
+}
+.hero-shelf-label {
+  font-size: var(--t-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--ink-soft); margin-bottom: clamp(var(--s-3), 1.2vw, var(--s-4));
+}
+.hero-spines {
+  position: relative; display: flex; align-items: flex-end; gap: clamp(6px, .8vw, 11px);
+  height: clamp(108px, 12vw, 150px); padding: 0 clamp(4px, .8vw, 10px) clamp(7px, .8vw, 10px);
+  width: 100%;
+}
+/* The ledge the spines stand on (full width), with a ground shadow so the row
+   reads as books on a real shelf, not a floating sticker. */
+.hero-spines::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: clamp(7px, .8vw, 10px); border-radius: 2px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--line-strong) 72%, var(--ink)), color-mix(in srgb, var(--line-strong) 50%, var(--paper)));
+  box-shadow: 0 9px 20px -9px color-mix(in srgb, var(--ink) 48%, transparent);
+}
+.hero-spine { display: block; width: clamp(38px, 4vw, 56px); height: 100%; border-radius: 3px 4px 0 0; overflow: hidden;
+  box-shadow: -3px 0 11px -4px color-mix(in srgb, var(--ink) 45%, transparent), inset -3px 0 6px -4px rgba(0,0,0,.3);
+  transform-origin: bottom center; }
+.hero-spine .spine-svg { width: 100%; height: 100%; }
+/* A lived-in shelf rhythm: gentle height variation + a couple of soft tilts so
+   the row reads as a real row of standing books, not a flat palisade. */
+.hero-spine:nth-child(1) { height: 92%; transform: rotate(-1.6deg); }
+.hero-spine:nth-child(2) { height: 100%; }
+.hero-spine:nth-child(3) { height: 95%; transform: rotate(1.2deg); }
+.hero-spine:nth-child(4) { height: 100%; }
+.hero-spine:nth-child(5) { height: 90%; transform: rotate(-1deg); }
+.hero-spine:nth-child(6) { height: 97%; transform: rotate(.8deg); }
+
+/* ----------------------------- HERO ENTRANCE -------------------------------- */
+/* The book swings up onto the ledge from its left binding (final state keeps the
+   standing tilt), then the text and shelf settle in — an elegant assembly. */
+@keyframes heroBookRise {
+  0%   { opacity: 0; transform: rotateY(-30deg) rotateX(2deg) translateY(14px); }
+  100% { opacity: 1; transform: rotateY(-13deg) rotateX(2deg); }
+}
+@keyframes heroSettle { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.hero-body { animation: heroSettle .6s var(--ease) .12s both; }
+.hero-shelf { animation: heroSettle .6s var(--ease) .22s both; }
+
+/* ----------------------------- HERO RESPONSIVE ------------------------------ */
+/* Mid widths: tighten the book column; the content zone (text + shelf) still
+   fills the rest, so the band stays composed with no gap. The shelf shows fewer
+   spines naturally (flex-wrap off, overflow clipped by the band). */
+@media (max-width: 980px) {
+  .library-hero { grid-template-columns: clamp(176px, 26vw, 234px) minmax(0, 1fr); }
+  .hero-spines { height: clamp(96px, 13vw, 124px); }
+}
+/* On phones, stack: book centred above, text below, both comfortably readable.
+   Drop the spine shelf here (it's framing, not content) so the stacked band
+   stays tight and legible. */
+@media (max-width: 680px) {
+  .library-hero { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center;
+    gap: var(--s-5); padding-top: clamp(var(--s-7), 8vw, var(--s-8)); }
+  .hero-stage { max-width: 220px; justify-self: center; }
+  .hero-book { margin-top: 0; }
+  .hero-content { align-items: center; width: 100%; gap: var(--s-5); }
+  .hero-body { align-self: stretch; align-items: center; max-width: none; margin-right: 0; }
+  .hero-logline { margin-left: auto; margin-right: auto; }
+  .hero-meta { justify-content: center; }
+  .hero-progress { flex: 0 1 280px; }
+  .hero-shelf { display: none; }
+}
+
+/* Staggered card entrance (gated by reduced-motion below). */
+.book-card.card-enter { animation: cardRise .5s var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
+@keyframes cardRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.book-grid {
+  display: grid; gap: clamp(var(--s-5), 3.5vw, var(--s-7)) var(--s-5);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  perspective: 1400px;
+  /* Generous breathing room beneath the last row plus a faint "shelf rule" and a
+     soft fade (below) so the bottom of the library resolves cleanly at the fold —
+     a partially-scrolled bottom row reads as books standing on a shelf that
+     continues below the fold, not a guillotined crop. */
+  padding-bottom: clamp(var(--s-8), 7vw, var(--s-9));
+  position: relative;
+}
+/* A soft fade gradient over the foot of the grid so the bottom row visibly
+   recedes — signalling "the shelf continues below the fold" rather than a hard
+   crop flush at the viewport edge. Theme-aware; non-interactive. */
+.book-grid::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  height: clamp(var(--s-7), 9vw, 132px); pointer-events: none; border-radius: 0 0 var(--radius) var(--radius);
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--paper) 78%, transparent) 64%, var(--paper) 100%);
+}
+/* The closing shelf rule: a hairline plank with a soft ground shadow, sitting a
+   little below the grid so even a half-visible bottom row has a baseline to stand
+   on. Decorative; theme-aware via tokens. */
+.book-grid::after {
+  content: ""; position: absolute; left: 2%; right: 2%; bottom: clamp(var(--s-3), 2.5vw, var(--s-5));
+  height: 3px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--line-strong) 70%, var(--ink)) 14%,
+    color-mix(in srgb, var(--line-strong) 70%, var(--ink)) 86%,
+    transparent 100%);
+  box-shadow: 0 8px 22px -10px color-mix(in srgb, var(--ink) 40%, transparent);
+}
+.book-card {
+  --tilt-x: 0deg; --tilt-y: 0deg;
+  position: relative; display: flex; flex-direction: column;
+  background: transparent; border: none;
+  border-radius: var(--radius);
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  /* Spring-ish settle when the pointer leaves; see .is-tilting for tracking. */
+  transition: transform .5s var(--ease-spring);
+}
+/* While actively following the pointer, track instantly (no lag). */
+.book-card.is-tilting { transition: transform 60ms linear; }
+.book-card:hover { transform: translateY(-6px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); }
+.book-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius); }
+
+/* The cover artwork — the signature object on the shelf. */
+.card-cover {
+  position: relative; aspect-ratio: 2 / 3; border-radius: 4px 9px 9px 4px;
+  overflow: hidden; transform: translateZ(20px);
+  box-shadow:
+    /* page block on the fore-edge */
+    3px 2px 0 -1px var(--surface-2),
+    5px 3px 0 -1px color-mix(in srgb, var(--surface-2) 70%, var(--line-strong)),
+    var(--shadow);
+  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.book-card:hover .card-cover {
+  box-shadow:
+    3px 2px 0 -1px var(--surface-2),
+    5px 3px 0 -1px color-mix(in srgb, var(--surface-2) 70%, var(--line-strong)),
+    var(--shadow-lg);
+}
+.cover-art, .cover-art .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cover-svg { border-radius: inherit; }
+/* spine shadow groove on the binding edge */
+.card-cover::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 3;
+  background: linear-gradient(90deg, rgba(0,0,0,.32), rgba(0,0,0,.06) 55%, rgba(255,255,255,.10) 78%, rgba(0,0,0,0));
+  pointer-events: none;
+}
+/* moving gloss highlight following the pointer (decorative) */
+.card-cover::after {
+  content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  border-radius: inherit; opacity: 0;
+  background: radial-gradient(160px 160px at var(--gloss-x, 50%) var(--gloss-y, 0%), rgba(255,255,255,.22), transparent 60%);
+  transition: opacity var(--dur) var(--ease);
+}
+.book-card:hover .card-cover::after { opacity: 1; }
+/* On touch / coarse pointers the pointer-tilt + gloss don't apply (JS skips
+   attachTilt there); neutralise any residual tilt so cards lie flat. */
+@media (hover: none), (pointer: coarse) {
+  .book-card, .book-card:hover { transform: none; }
+}
+.cover-fallback {
+  display: grid; place-items: center; padding: var(--s-4);
+  background: linear-gradient(160deg, var(--accent-strong), var(--fallback-2));
+  color: var(--on-fill); font-family: var(--font-display); font-size: var(--t-md); text-align: center;
+}
+
+.card-body { position: relative; padding: var(--s-4) var(--s-1) 0; transform: translateZ(8px); }
+/* Soft ground shadow at the foot of the cover (the card body's top edge sits
+   exactly at the cover's foot) so every card reads as a book standing on a shelf.
+   This gives even a partially-scrolled bottom row a baseline — never a guillotine
+   crop. Decorative; deepens slightly on hover as the cover lifts. */
+.card-body::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  left: 8%; right: 4%; top: -7px; height: 13px; border-radius: 50%;
+  background: radial-gradient(60% 100% at 50% 50%, color-mix(in srgb, var(--ink) 26%, transparent), transparent 72%);
+  filter: blur(2.5px); opacity: .5;
+  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.book-card:hover .card-body::before { opacity: .7; transform: translateY(3px) scaleX(1.04); }
+.card-top { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-1); }
+.card-genre { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .14em; font-weight: 600; color: var(--accent); }
+.card-badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: .06em; }
+.card-mock { position: absolute; top: var(--s-2); right: var(--s-2); z-index: 5;
+  background: color-mix(in srgb, var(--warn) 90%, #000); color: var(--on-fill);
+  box-shadow: var(--shadow-sm); text-transform: uppercase; }
+.card-title { font-size: var(--t-lg); letter-spacing: -.01em; margin-bottom: var(--s-1); line-height: 1.18;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card-logline { color: var(--ink-soft); font-size: var(--t-sm); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The meta strip under a grid cover: a quiet hairline foot so each card reads as
+   a bound book (progress ring + a short two-line caption), not a list row. */
+.card-foot { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
+.ring { position: relative; width: 36px; height: 36px; display: grid; place-items: center; flex: 0 0 auto; }
+.ring svg { transform: rotate(-90deg); width: 36px; height: 36px; }
+.ring .ring-bg { stroke: var(--line-strong); }
+.ring .ring-fg { stroke: var(--accent); stroke-dasharray: 113.1; stroke-dashoffset: 113.1; transition: stroke-dashoffset .9s var(--ease); }
+.ring-label { position: absolute; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-stats { display: flex; flex-direction: column; gap: 1px; font-size: var(--t-sm); min-width: 0; }
+.card-chapters { font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+/* Status reads as a small editorial label rather than a mono "cost" line. */
+.card-cost { color: var(--ink-faint); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: var(--s-9) var(--s-5); max-width: 56ch; margin: 0 auto; }
+.empty-illus { color: var(--accent); display: flex; justify-content: center; margin-bottom: var(--s-5); }
+.shelf-illus { filter: drop-shadow(0 12px 24px color-mix(in srgb, var(--ink) 12%, transparent)); }
+.es-book { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; }
+.es-book-2 { fill: var(--accent-soft); stroke: color-mix(in srgb, var(--accent) 40%, var(--line-strong)); }
+.es-book-3 { fill: var(--surface-2); stroke: var(--line-strong); }
+.es-plank { fill: var(--line-strong); }
+.es-plank-shadow { fill: color-mix(in srgb, var(--ink) 14%, transparent); }
+.es-foil { stroke: var(--gold); stroke-width: 2; stroke-linecap: round; }
+.es-quill-fill { fill: var(--accent); opacity: .9; }
+.es-quill-stem { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; fill: none; }
+/* Stagger every book rect (incl. the leaning book's inner rect) left-to-right.
+   We rise each rect via fill-box transform-origin so the leaning book's parent
+   <g transform="rotate()"> keeps its tilt (animating the <g> would clobber it).
+   nth-of-type counts among same-tag siblings, so the foil <line>s no longer
+   shift the index the way the old nth-child did. */
+.empty-shelf .es-stack rect { animation: shelfRise .6s var(--ease) both; transform-box: fill-box; transform-origin: bottom center; }
+.empty-shelf .es-stack rect:nth-of-type(2) { animation-delay: .06s; }
+.empty-shelf .es-stack rect:nth-of-type(3) { animation-delay: .12s; }
+.empty-shelf .es-stack g rect { animation-delay: .18s; }
+.empty-shelf .es-stack rect:nth-of-type(4) { animation-delay: .24s; }
+.empty-shelf .es-stack rect:nth-of-type(5) { animation-delay: .30s; }
+.empty-shelf .es-quill { animation: quillFloat 4s var(--ease) infinite; }
+@keyframes shelfRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes quillFloat { 0%,100% { transform: translate(150px, 30px) rotate(0deg); } 50% { transform: translate(150px, 24px) rotate(-4deg); } }
+.empty-state h2 { font-size: var(--t-2xl); margin-bottom: var(--s-3); }
+.empty-state p { color: var(--ink-soft); margin-bottom: var(--s-5); }
+
+/* ----------------------------- COMPOSER --------------------------------- */
+/* A centred max-width shell with a comfortable right-side gutter so the form is
+   never crammed against the viewport edge. The head and the two-column layout
+   share this container, keeping everything aligned and breathing. */
+.composer-shell { max-width: 1120px; margin: 0 auto; padding: 0 clamp(var(--s-4), 3vw, var(--s-7)); }
+/* The forge leads (it's the headline feature) with the form beside it. Both
+   columns get real, balanced widths so neither the preview reads as a washed-out
+   void nor the form clings to the edge. The forge is sticky so it stays in view
+   while scrolling the longer form. */
+.composer-layout {
+  display: grid; grid-template-columns: clamp(248px, 32%, 340px) minmax(0, 1fr);
+  gap: clamp(var(--s-6), 4vw, var(--s-9)); align-items: start;
+}
+/* Narrow screens: the preview STACKS ABOVE the form, still prominent. */
+@media (max-width: 760px) {
+  .composer-layout { grid-template-columns: 1fr; gap: var(--s-6); }
+  .forge { order: -1; }
+  .forge-stage { max-width: 220px; margin: 0 auto; }
+}
+
+/* ---- Live Cover Forge ---- */
+.forge { position: sticky; top: var(--s-5); display: grid; gap: var(--s-3); justify-items: center; }
+.forge-stage { width: 100%; perspective: 1200px; }
+.forge-book {
+  position: relative; width: 100%; aspect-ratio: 2 / 3;
+  border-radius: 4px 10px 10px 4px;
+  /* A standing-book lean + fore-edge page block, matching the library hero. */
+  transform: perspective(1100px) rotateY(-7deg) rotateX(1.5deg);
+  transform-origin: left center;
+  box-shadow:
+    3px 2px 0 -1px var(--surface-2),
+    6px 4px 0 -2px color-mix(in srgb, var(--surface-2) 70%, var(--line-strong)),
+    var(--shadow-lg);
+}
+/* soft floor shadow grounding the forged book */
+.forge-book::after {
+  content: ""; position: absolute; left: -6%; right: 2%; bottom: -10px; height: 16px; z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(60% 100% at 50% 50%, color-mix(in srgb, var(--ink) 30%, transparent), transparent 72%);
+  filter: blur(3px); opacity: .5; pointer-events: none;
+}
+/* binding-edge spine groove */
+.forge-book::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; z-index: 3;
+  border-radius: 4px 0 0 4px;
+  background: linear-gradient(90deg, rgba(0,0,0,.3), rgba(255,255,255,.08) 70%, transparent);
+  pointer-events: none;
+}
+.forge-cover { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+.forge-cover .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+/* Empty state: a crisp dashed book-silhouette frame at the cover's own 2:3 ratio
+   (inherited from .forge-book) — so even before typing it reads as "a book
+   waiting to be designed", not a broken/empty box. */
+.forge-empty {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center;
+  border-radius: inherit; padding: clamp(var(--s-4), 6%, var(--s-6)); text-align: center; overflow: hidden;
+  background: linear-gradient(165deg, var(--surface), var(--paper-2));
+  border: 2px dashed color-mix(in srgb, var(--line-strong) 80%, var(--accent) 20%);
+  color: var(--ink-soft);
+}
+/* A gentle skeleton shimmer sweeping across the dashed placeholder so the empty
+   forge reads as "ready / standing by" rather than broken. Decorative, sits
+   under the content (ghost jacket + glyph + caption keep z-index:0/1). Gated off
+   under reduced-motion below. */
+.forge-empty::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(105deg,
+    transparent 38%,
+    color-mix(in srgb, var(--accent) 8%, transparent) 50%,
+    transparent 62%);
+  background-size: 240% 100%; background-repeat: no-repeat;
+  animation: forgeSkeleton 2.6s var(--ease) infinite;
+}
+@keyframes forgeSkeleton { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+/* The JS toggles `hidden` to reveal the forged cover; `.forge-empty`'s display
+   would otherwise override the [hidden] attribute, so re-assert it explicitly. */
+.forge-empty[hidden] { display: none !important; }
+/* A faint, decorative default jacket behind the caption so the pane has visual
+   interest immediately (twin inset foil rules + a quiet centred diamond motif). */
+.forge-empty-ghost {
+  position: absolute; inset: clamp(10px, 7%, 18px); z-index: 0; border-radius: 3px;
+  opacity: .5; pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  background:
+    /* twin top foil rules */
+    linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 30%, transparent)) center 22% / 56% 1.5px no-repeat,
+    linear-gradient(color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent) 20%, transparent)) center 27% / 34% 1px no-repeat,
+    /* a quiet diamond motif low-centre (two stacked conic wedges form the rhombus) */
+    conic-gradient(from 45deg at 50% 50%, color-mix(in srgb, var(--gold) 22%, transparent) 0 90deg, transparent 90deg 360deg) center 72% / 34px 34px no-repeat;
+}
+.forge-empty-inner { position: relative; z-index: 1; display: grid; justify-items: center; gap: var(--s-3); }
+.forge-empty-glyph {
+  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+  color: var(--accent); background: var(--accent-soft);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.forge-empty-glyph svg { color: var(--accent); }
+.forge-empty p { font-family: var(--font-display); font-size: var(--t-sm); line-height: 1.45; color: var(--ink-soft); max-width: 22ch; }
+/* Caption uses --ink-soft (was --ink-faint) so the small uppercase label under
+   the empty forge stays comfortably legible in both themes. */
+.forge-caption { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .14em; font-weight: 600; color: var(--ink-soft); }
+/* "Re-stamp" micro-animation on each live update: a soft scale + a foil shimmer
+   sweep across the jacket. Reduced-motion drops this (handled below). */
+.forge-book.is-stamp { animation: forgeStamp .42s var(--ease-spring); }
+.forge-book.is-stamp .forge-cover::before {
+  content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.34) 50%, transparent 62%);
+  background-size: 240% 100%;
+  animation: forgeShimmer .55s var(--ease) forwards;
+}
+@keyframes forgeStamp {
+  0% { transform: perspective(1100px) rotateY(-7deg) rotateX(1.5deg) scale(.985); }
+  55% { transform: perspective(1100px) rotateY(-7deg) rotateX(1.5deg) scale(1.012); }
+  100% { transform: perspective(1100px) rotateY(-7deg) rotateX(1.5deg) scale(1); }
+}
+@keyframes forgeShimmer { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+/* Submit "binding" flourish: the jacket presses shut with a quick foil sweep. */
+.forge-book.is-binding { animation: forgeBind .5s var(--ease) forwards; }
+@keyframes forgeBind {
+  0% { transform: perspective(1100px) rotateY(-7deg) rotateX(1.5deg) scale(1); }
+  45% { transform: perspective(1100px) rotateY(-2deg) rotateX(0deg) scale(1.03); }
+  100% { transform: perspective(1100px) rotateY(0deg) rotateX(0deg) scale(.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .forge-book { transform: none; }
+  .forge-book.is-stamp, .forge-book.is-binding { animation: none; }
+  .forge-book.is-stamp .forge-cover::before { display: none; }
+  /* No skeleton sweep on the empty placeholder under reduced-motion. */
+  .forge-empty::after { animation: none; display: none; }
+}
+@media (hover: none), (pointer: coarse) {
+  .forge-book { transform: perspective(1100px) rotateY(-4deg); }
+}
+
+.composer-head { margin-bottom: var(--s-6); }
+.composer-head .display { margin: var(--s-2) 0 var(--s-3); }
+.composer {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); padding: var(--s-6);
+  box-shadow: var(--shadow); display: grid; gap: var(--s-5);
+}
+.field { display: grid; gap: var(--s-2); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-4); }
+/* Genre / Chapters / Words share one tidy row of three (collapses to a single
+   column on narrow screens via the .field-row rule below). */
+.field-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+/* The Title field is full-width so a normal book title is never visually
+   clipped against the live cover. The input itself fills its column. */
+.field-title input { width: 100%; }
+.field label, .profiles legend { font-weight: 600; font-size: var(--t-sm); }
+.field .req { color: var(--accent); }
+.field .opt { color: var(--ink-faint); font-weight: 400; font-size: var(--t-xs); }
+.field-hint { font-size: var(--t-xs); color: var(--ink-faint); }
+input[type="text"], input[type="number"], textarea {
+  width: 100%; padding: var(--s-3) var(--s-4); border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+textarea { resize: vertical; line-height: 1.55; }
+.field-hero textarea { font-family: var(--font-display); font-size: var(--t-md); }
+/* Focus uses a soft accent-tinted border + a glow halo so it clearly reads as
+   "focused" — not the hard crimson border that was being mistaken for a
+   validation error. Real errors (:invalid) use the distinct --bad color. */
+input:focus, textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  background: var(--surface);
+}
+input:invalid:not(:placeholder-shown) { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent); }
+
+/* Profiles */
+.profiles { border: none; padding: 0; margin: 0; display: grid; gap: var(--s-3); }
+.profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s-3); }
+.profile-opt {
+  position: relative; cursor: pointer; border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: var(--s-4); background: var(--paper-2);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.profile-opt:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.profile-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.profile-opt:has(input:checked) {
+  border-color: var(--accent); background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.profile-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.po-name { font-weight: 700; text-transform: capitalize; display: flex; align-items: center; gap: var(--s-2); }
+.po-name .po-check { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-strong); display: inline-grid; place-items: center; }
+.profile-opt:has(input:checked) .po-check { border-color: var(--accent); background: var(--accent); }
+.profile-opt:has(input:checked) .po-check::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-ink); }
+.po-stages { margin-top: var(--s-3); display: grid; gap: 4px; }
+.po-stage { display: flex; justify-content: space-between; font-size: var(--t-xs); color: var(--ink-soft); }
+.po-stage b { font-weight: 500; color: var(--ink); text-transform: capitalize; }
+.po-stage code { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); }
+.po-price { margin-top: var(--s-3); font-size: var(--t-xs); font-family: var(--font-mono); color: var(--accent-strong); padding-top: var(--s-2); border-top: 1px dashed var(--line); }
+
+/* Composer foot */
+.composer-foot { display: grid; gap: var(--s-4); border-top: 1px solid var(--line); padding-top: var(--s-5); }
+.switch { display: flex; gap: var(--s-3); align-items: flex-start; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track { flex: 0 0 auto; width: 46px; height: 26px; border-radius: 999px; background: var(--line-strong); position: relative; transition: background var(--dur) var(--ease); margin-top: 2px; }
+.switch-thumb { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--switch-off); box-shadow: var(--shadow-sm); transition: transform var(--dur) var(--ease), background var(--dur) var(--ease); }
+.switch input:checked + .switch-track { background: var(--accent); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(20px); background: var(--accent-ink); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch-label strong { display: block; font-size: var(--t-sm); }
+.switch-label .switch-sub { font-size: var(--t-xs); color: var(--ink-faint); }
+
+.advanced summary { cursor: pointer; font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); width: max-content; }
+.advanced summary:hover { color: var(--accent); }
+.advanced-body { display: grid; gap: var(--s-2); margin-top: var(--s-3); padding-left: var(--s-2); }
+.check { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-sm); cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.composer-actions { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.composer-note { font-size: var(--t-sm); color: var(--ink-soft); }
+.composer-note.is-error { color: var(--bad); }
+
+/* ----------------------------- STUDIO ----------------------------------- */
+.studio-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s-5); flex-wrap: wrap; margin-bottom: var(--s-4); }
+.studio-hero { display: flex; align-items: flex-start; gap: var(--s-5); min-width: 0; }
+.studio-cover {
+  position: relative; flex: 0 0 auto; width: 92px; aspect-ratio: 2 / 3;
+  border-radius: 3px 7px 7px 3px; overflow: hidden;
+  box-shadow: 2px 1px 0 -1px var(--surface-2), var(--shadow); animation: coverDrop .6s var(--ease) both;
+}
+.studio-cover .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.studio-cover::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; z-index: 3;
+  background: linear-gradient(90deg, rgba(0,0,0,.3), rgba(255,255,255,.08) 70%, transparent); pointer-events: none; }
+@keyframes coverDrop { from { opacity: 0; transform: translateY(-8px) rotate(-2deg); } to { opacity: 1; transform: none; } }
+.studio-cover.is-finished { animation: coverPop .8s var(--ease); }
+@keyframes coverPop { 0% { transform: scale(1); } 30% { transform: scale(1.06) rotate(1deg); } 100% { transform: scale(1); } }
+.studio-title-wrap .display { font-size: clamp(1.8rem, 1.2rem + 2.4vw, var(--t-3xl)); margin: 4px 0; }
+.studio-logline { color: var(--ink-soft); max-width: 60ch; font-size: var(--t-sm); }
+.studio-head-actions { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.studio-tabs { display: flex; gap: var(--s-1); background: var(--surface-2); padding: 4px; border-radius: 999px; }
+.tab { padding: var(--s-2) var(--s-4); border-radius: 999px; font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.tab:hover { color: var(--ink); }
+.tab.is-active { background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
+
+.studio-progress { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-5); }
+.progress-track { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
+.progress-fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--accent)); transition: width .7s var(--ease); position: relative; }
+.progress-fill.is-complete { background: linear-gradient(90deg, var(--good), var(--gold), var(--accent)); background-size: 200% 100%; animation: progGlow 2.4s var(--ease) infinite; }
+@keyframes progGlow { 0%,100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+.progress-label { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.studio-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; gap: var(--s-5); align-items: start; }
+
+/* Rails */
+.studio-rail { position: sticky; top: 84px; }
+.rail-title { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .14em; color: var(--ink-faint); font-weight: 700; margin-bottom: var(--s-3); }
+.studio-meta .rail-title:not(:first-child) { margin-top: var(--s-5); }
+
+/* Chapter list */
+.chapter-list { display: grid; gap: var(--s-2); max-height: calc(100vh - 130px); overflow: auto; padding-right: 4px; }
+.chapter-item {
+  display: grid; grid-template-columns: 26px 1fr; gap: var(--s-3); align-items: start;
+  padding: var(--s-3); border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid transparent; background: transparent;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.chapter-item:hover { background: var(--surface); }
+.chapter-item.is-active { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.chapter-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ci-num { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  font-size: var(--t-xs); font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--surface-2); color: var(--ink-faint); border: 1px solid var(--line); }
+.chapter-item.is-written .ci-num { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* Dark numeral on the gold writing-state chip: gold is a mid-tone in both
+   themes, so a near-black numeral keeps contrast (white was low-contrast in dark). */
+.chapter-item.is-writing .ci-num { background: var(--gold); color: #2a1d05; border-color: var(--gold); animation: pulse 1.4s var(--ease) infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 55%, transparent);} 50% { box-shadow: 0 0 0 6px transparent; } }
+/* The actively-writing outline row gently breathes (tinted wash + soft ring) so
+   the live chapter is unmistakable in the outline even in a still frame. */
+.chapter-item.is-writing {
+  background: color-mix(in srgb, var(--gold) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--line));
+  animation: rowBreathe 2.2s var(--ease) infinite;
+}
+@keyframes rowBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent), 0 2px 12px -4px color-mix(in srgb, var(--gold) 55%, transparent); }
+}
+.ci-main { min-width: 0; }
+.ci-title { font-size: var(--t-sm); font-weight: 600; line-height: 1.3; }
+.ci-meta { font-size: var(--t-xs); color: var(--ink-faint); display: flex; gap: var(--s-2); margin-top: 2px; flex-wrap: wrap; }
+.ci-flag { color: var(--warn); font-weight: 600; }
+
+/* Reader */
+.studio-reader { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; min-height: 60vh; display: flex; flex-direction: column; }
+.reader-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-5) var(--s-6); border-bottom: 1px solid var(--line); background: var(--paper-2); }
+.reader-chip { font-size: var(--t-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.reader-title { flex: 1; font-size: var(--t-xl); letter-spacing: -.01em; min-width: 0; }
+.reader-words { font-size: var(--t-xs); font-family: var(--font-mono); color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 7px; }
+/* While a chapter streams, the word readout becomes an unmistakable live badge:
+   a larger, high-contrast accent-FILLED pill with a clear pulsing dot, so the
+   writing state reads as live even in a still frame (not only via the caret). */
+.reader-words.is-writing {
+  color: var(--accent-ink); font-weight: 700; font-size: var(--t-sm);
+  letter-spacing: .01em; gap: 9px;
+  background: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--ink));
+  padding: 6px 14px 6px 12px; border-radius: 999px;
+  box-shadow: 0 2px 10px -3px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.reader-words.is-writing::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent-ink);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ink) 70%, transparent);
+  animation: writePulse 1.3s var(--ease) infinite;
+}
+@keyframes writePulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ink) 70%, transparent); transform: scale(1); }
+  70% { box-shadow: 0 0 0 8px transparent; transform: scale(1.15); }
+  100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+}
+/* Reduced-motion: the badge stays a clearly-"writing" filled pill with a solid
+   (non-pulsing) dot — still unmistakable, just static. */
+@media (prefers-reduced-motion: reduce) {
+  .reader-words.is-writing::before { animation: none; box-shadow: none; transform: none; }
+}
+.reader-body { flex: 1; overflow: auto; padding: var(--s-7) clamp(var(--s-5), 6vw, var(--s-9)); max-width: 72ch; margin: 0 auto; width: 100%; scroll-behavior: smooth; }
+.reader-body { font-family: var(--font-display); font-size: var(--t-md); line-height: 1.78; color: var(--ink); font-weight: 400; }
+/* faint laid-paper texture under the prose (decorative, subtle) */
+.reader-body {
+  background-image: repeating-linear-gradient(0deg, transparent, transparent calc(1.78em - 1px), color-mix(in srgb, var(--ink) 4%, transparent) calc(1.78em - 1px), color-mix(in srgb, var(--ink) 4%, transparent) 1.78em);
+  background-position: 0 var(--s-7);
+}
+:root[data-theme="dark"] .reader-body { background-image: repeating-linear-gradient(0deg, transparent, transparent calc(1.78em - 1px), rgba(255,255,255,.025) calc(1.78em - 1px), rgba(255,255,255,.025) 1.78em); }
+.reader-body p { margin-bottom: 1.1em; text-wrap: pretty; position: relative; }
+.reader-body p:first-of-type::first-letter { font-size: 3.4em; line-height: .72; float: left; padding: 0.02em 0.1em 0 0; color: var(--accent); font-weight: 600; font-family: var(--font-display); text-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 30%, transparent); }
+/* Drop-cap reflows the whole paragraph on every token; suppress while streaming. */
+.reader-body.is-streaming p:first-of-type::first-letter { all: unset; }
+/* A blinking caret that trails the streamed prose at its growing edge. Made
+   thicker, taller and with a stronger glow so the "live" insertion point reads
+   clearly even in a frozen frame. */
+.reader-body.is-streaming p:last-of-type::after,
+.reader-body.is-streaming > p:last-child::after {
+  content: ""; display: inline-block; width: 5px; height: 1.22em;
+  margin-left: 4px; vertical-align: text-bottom;
+  background: var(--accent); border-radius: 2px;
+  animation: caret 1.05s steps(2, jump-none) infinite;
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 85%, transparent),
+              0 0 3px color-mix(in srgb, var(--accent) 95%, transparent);
+}
+@keyframes caret { 0%, 45% { opacity: 1; } 55%, 100% { opacity: 0; } }
+/* Soft fade-mask over the last ~2 lines of streaming prose: the freshest text
+   eases in from a slightly faded edge, reinforcing the "being written now" feel.
+   A bottom overlay inside the scrolling body (fixed to the viewport edge of the
+   reader) gently dissolves the growing edge. */
+.reader-body.is-streaming { position: relative; }
+.reader-body.is-streaming::before {
+  content: ""; position: sticky; bottom: 0; left: 0; right: 0;
+  display: block; height: 4.6em; margin-bottom: -4.6em; pointer-events: none; z-index: 2;
+  background: linear-gradient(to top,
+    var(--surface) 14%,
+    color-mix(in srgb, var(--surface) 70%, transparent) 48%,
+    color-mix(in srgb, var(--surface) 30%, transparent) 78%,
+    transparent);
+}
+/* ---- LIVE-WRITING SKELETON: always-visible "words appearing now" cue. ----
+   While a chapter streams, 2-3 shimmer placeholder bars trail the prose to stand
+   in for text still being written — so even a FROZEN frame unmistakably reads as
+   "generating", not the static studio. Inserted/removed by Studio between
+   chapter_start and chapter_done; it never participates in the final clean render.
+   The bars sit ABOVE the bottom fade-mask (z-index) and after the prose; the
+   caret stays on the last <p> (the skeleton is a <div>, so p:last-of-type wins). */
+.stream-skeleton {
+  position: relative; z-index: 3; /* above the .is-streaming::before fade mask */
+  margin-top: 1.4em; padding-top: .2em;
+  display: flex; flex-direction: column; gap: .85em;
+  pointer-events: none; user-select: none;
+}
+.stream-skeleton-line {
+  height: .92em; border-radius: var(--radius-sm);
+  /* A calm gradient placeholder tinted to the prose surface so it reads as
+     "ink not yet set", with a sweeping shimmer overlay (the live signal). */
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--ink) 9%, transparent),
+    color-mix(in srgb, var(--ink) 14%, transparent),
+    color-mix(in srgb, var(--ink) 9%, transparent));
+  background-size: 200% 100%;
+  animation: streamSkeletonSweep 1.5s ease-in-out infinite;
+}
+.stream-skeleton-line:nth-child(1) { width: 96%; }
+.stream-skeleton-line:nth-child(2) { width: 88%; animation-delay: .18s; }
+.stream-skeleton-line:nth-child(3) { width: 64%; animation-delay: .36s; }
+@keyframes streamSkeletonSweep {
+  0%   { background-position: 150% 0; opacity: .55; }
+  50%  { background-position: 0 0;   opacity: 1; }
+  100% { background-position: -150% 0; opacity: .55; }
+}
+/* Reduced-motion: STATIC placeholder bars (no shimmer/sweep) — still clearly
+   "in progress", just calm. */
+@media (prefers-reduced-motion: reduce) {
+  .stream-skeleton-line { animation: none !important; background-position: 0 0; opacity: .8; }
+}
+
+/* chapter just finished — quick warm wash over the reader */
+.chapter-item.just-done .ci-num { animation: doneNudge .6s var(--ease-spring); }
+@keyframes doneNudge { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.reader-placeholder { text-align: center; color: var(--ink-faint); font-family: var(--font-text); padding-top: var(--s-7); }
+.reader-placeholder p:first-child { font-size: var(--t-xl); color: var(--ink-soft); margin-bottom: var(--s-3); }
+.reader-placeholder::first-letter { all: unset; }
+
+.reader-flags { padding: var(--s-4) var(--s-6); border-top: 1px solid var(--line); display: flex; gap: var(--s-2); flex-wrap: wrap; background: var(--paper-2); }
+.flag-badge { font-size: var(--t-xs); font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: center; }
+.flag-badge::before { content: "!"; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: currentColor; color: var(--surface); font-size: 10px; }
+.flag-high { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.flag-med { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.flag-low { background: var(--surface-2); color: var(--ink-soft); }
+
+/* Cost card */
+.cost-card, .continuity-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--s-5); box-shadow: var(--shadow-sm); }
+.continuity-card { margin-top: var(--s-5); }
+/* Cast → Open threads heading rhythm: a hairline divider above the second
+   section so the two lists in the continuity card read as distinct movements. */
+.continuity-card .rail-title:not(:first-child) { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+
+/* Cost hero: an eyebrow-labelled headline with the precise figure tucked
+   beneath, so the panel reads as a designed widget — not a debug dollar string. */
+.cost-hero { margin-top: var(--s-2); }
+.cost-eyebrow { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: var(--ink-faint); margin-bottom: var(--s-1); }
+.cost-amount { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+.cost-total { font-family: var(--font-display); font-size: var(--t-2xl); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1; color: var(--accent); }
+/* The fine 4dp figure: present for the cost-obsessed, but quiet and muted. */
+.cost-total-fine { font-family: var(--font-mono); font-size: var(--t-xs); font-variant-numeric: tabular-nums; color: var(--ink-faint); }
+
+/* Editorial readout: calm label-left / value-right rows with tabular figures,
+   matching the polish of the prose column. */
+.cost-readout { margin-top: var(--s-5); display: grid; gap: var(--s-3); }
+.cost-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); }
+.cost-row dt { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; color: var(--ink-faint); }
+.cost-row dd { font-size: var(--t-sm); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+
+/* Slim writing-progress bar + its percentage, tying the readout together. */
+.cost-progress { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-5); }
+.cost-progress .meter-track { flex: 1; margin-top: 0; }
+.cost-pct { font-size: var(--t-xs); font-weight: 700; color: var(--ink-soft); font-variant-numeric: tabular-nums; min-width: 2.6ch; text-align: right; }
+.meter-track { display: block; height: 7px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.meter-fill { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .6s var(--ease); }
+
+/* Token breakdown — tucked behind a clean expander; default state legible. */
+.token-details { margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+.token-details > summary { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; list-style: none; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .12em; font-weight: 700; color: var(--ink-faint); border-radius: var(--radius-sm); }
+.token-details > summary::-webkit-details-marker { display: none; }
+.token-details > summary:hover { color: var(--ink-soft); }
+.token-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.td-summary-label { flex: 1 1 auto; }
+.td-summary-total { font-family: var(--font-mono); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.td-caret { color: var(--ink-faint); transition: transform var(--dur) var(--ease); flex: 0 0 auto; }
+.token-details[open] > summary .td-caret { transform: rotate(180deg); }
+.token-bars { display: grid; gap: var(--s-3); margin-top: var(--s-4); }
+.token-bar { display: grid; grid-template-columns: 84px 1fr auto; align-items: center; gap: var(--s-3); font-size: var(--t-sm); }
+.tb-label { color: var(--ink-soft); white-space: nowrap; }
+.tb-track { height: 7px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.tb-fill { display: block; height: 100%; width: 0; border-radius: 999px; transition: width .6s var(--ease); }
+.token-bar[data-k="input"] .tb-fill { background: var(--ink-soft); }
+.token-bar[data-k="output"] .tb-fill { background: var(--accent); }
+.token-bar[data-k="cache_read"] .tb-fill { background: var(--good); }
+.token-bar[data-k="cache_write"] .tb-fill { background: var(--gold); }
+.tb-val { font-family: var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+.cache-savings { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-3); font-size: var(--t-sm); color: var(--good); }
+.cache-savings strong { font-family: var(--font-mono); }
+
+/* Cast + threads */
+.cast-list { display: grid; gap: 2px; }
+.cast-item { display: flex; align-items: center; gap: var(--s-3); padding: 5px var(--s-2); border-radius: var(--radius-sm); }
+.cast-item:hover { background: var(--surface-2); }
+.cast-avatar { width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; font-weight: 700; font-size: var(--t-xs); color: var(--on-fill); font-family: var(--font-display); }
+.cast-main { min-width: 0; }
+.cast-name { font-size: var(--t-sm); font-weight: 600; line-height: 1.2; }
+.cast-role { font-size: var(--t-xs); color: var(--ink-faint); text-transform: capitalize; }
+.cast-status { font-size: 10px; margin-left: auto; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint); }
+.cast-status.is-dead { color: var(--bad); }
+
+.thread-list { display: grid; gap: var(--s-2); }
+.thread-pill { font-size: var(--t-xs); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm); background: var(--paper-2); border: 1px solid var(--line); border-left: 3px solid var(--gold); }
+.thread-pill.is-resolved { border-left-color: var(--good); opacity: .7; }
+.thread-pill b { display: block; font-size: var(--t-sm); }
+.rail-empty { font-size: var(--t-xs); color: var(--ink-faint); font-style: italic; }
+
+/* ----------------------------- GRAPH ------------------------------------ */
+.graph-stage { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
+/* No pan/zoom is implemented, so let the page scroll/pinch normally over the
+   SVG rather than trapping the gesture with touch-action:none. */
+/* Height tracks the flatter 900x400 viewBox so the card HUGS the cast — no large
+   empty band above/below the node cluster. The aspect-ratio keeps the stage
+   proportionate while the tighter max-height stops it ballooning on wide screens. */
+.graph-svg { width: 100%; aspect-ratio: 900 / 400; height: auto; max-height: 46vh; display: block;
+  /* Layered depth: a warm accent glow at the focal centre over a faint dark
+     vignette at the corners, so the canvas reads as a lit, designed stage in
+     BOTH themes rather than a flat panel. */
+  background:
+    radial-gradient(58% 68% at 50% 46%, color-mix(in srgb, var(--accent-soft) 46%, transparent), transparent 70%),
+    radial-gradient(120% 120% at 50% 50%, transparent 58%, color-mix(in srgb, var(--ink) 9%, transparent) 100%); }
+.graph-rings { pointer-events: none; }
+.graph-ring { fill: none; stroke: var(--line-strong); stroke-width: 1; opacity: .35; stroke-dasharray: 2 6; }
+/* Edges read clearly against the near-black field at rest: a higher-contrast
+   stroke plus a soft accent-tinted glow so connectors are easy to trace BEFORE
+   any interaction. No text labels are shown at rest (they appear on focus). */
+.graph-edge { fill: none;
+  stroke: color-mix(in srgb, var(--ink-soft) 55%, var(--line-strong));
+  stroke-width: 1.9; stroke-linecap: round;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 22%, transparent));
+  transition: stroke var(--dur) var(--ease), stroke-width var(--dur) var(--ease), opacity var(--dur) var(--ease); }
+.graph-edge.is-hot { stroke: var(--accent); stroke-width: 2.75;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 55%, transparent)); }
+.graph-svg.has-focus .graph-edge:not(.is-hot) { opacity: .18; }
+/* Relationship labels are SOLID, opaque pill CHIPS revealed only for the focused
+   node's connections (hidden at rest via .is-hidden), so the web stays legible
+   and on interaction the relevant ties read crisply over edges + discs. */
+.graph-chips { pointer-events: none; }
+.graph-edge-chip { transition: opacity var(--dur) var(--ease); }
+.graph-edge-chip.is-hidden { opacity: 0; visibility: hidden; }
+.graph-edge-pill {
+  fill: color-mix(in srgb, var(--accent-soft) 78%, var(--surface));
+  stroke: var(--accent); stroke-width: 1.25;
+  filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--ink) 45%, transparent));
+}
+.graph-edge-label {
+  font-size: 11px; font-weight: 700; fill: var(--accent-strong);
+  font-family: var(--font-text); letter-spacing: .01em;
+}
+.graph-node { cursor: pointer; transition: opacity var(--dur) var(--ease); }
+.graph-node .node-halo { fill: var(--accent); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.graph-node circle:not(.node-halo) { stroke: var(--surface); stroke-width: 3.5; filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--ink) 26%, transparent)); transition: stroke var(--dur) var(--ease); }
+.graph-node:hover circle:not(.node-halo), .graph-node:focus-visible circle:not(.node-halo) { stroke: var(--accent); }
+.graph-node.is-focus .node-halo { opacity: .16; }
+.graph-node.is-dim { opacity: .32; }
+.graph-node text { font-family: var(--font-display); font-weight: 600; fill: var(--ink); font-size: 13px; text-anchor: middle; pointer-events: none; }
+/* Initials sit on a coloured disc -> light-on-fill, not body ink. */
+.graph-node .node-initials { fill: var(--on-fill); font-weight: 700; }
+.graph-node .node-name { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; text-shadow: 0 1px 2px color-mix(in srgb, var(--paper) 70%, transparent); }
+.node-pro { fill: var(--accent); }
+/* Antagonist: a desaturated cool ink that stays clearly heavier/darker than the
+   supporting gold in BOTH themes (reusing --ink inverted to near-paper in dark,
+   making the villain the brightest node — exactly wrong). */
+.node-ant { fill: var(--node-ant); }
+.node-sup { fill: var(--gold); }
+.graph-empty { display: grid; place-items: center; height: 100%; color: var(--ink-faint); font-style: italic; }
+.graph-grow-note { fill: var(--ink-faint); font-family: var(--font-text); font-size: 13px; font-style: italic; }
+
+/* A quiet affordance so the hover/focus interaction is discoverable; it fades
+   out once a character is being traced so it never competes with the labels. */
+.graph-hint { position: absolute; top: var(--s-4); left: 50%; transform: translateX(-50%);
+  margin: 0; font-size: var(--t-xs); font-style: italic; color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  padding: var(--s-2) var(--s-4); border-radius: 999px; border: 1px solid var(--line);
+  backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap;
+  transition: opacity var(--dur) var(--ease); }
+.graph-svg.has-focus ~ .graph-hint { opacity: 0; }
+.graph-legend { position: absolute; bottom: var(--s-4); left: var(--s-4); display: flex; gap: var(--s-4); flex-wrap: wrap; font-size: var(--t-xs); color: var(--ink-soft); background: color-mix(in srgb, var(--surface) 86%, transparent); padding: var(--s-2) var(--s-4); border-radius: 999px; border: 1px solid var(--line); backdrop-filter: blur(6px); }
+.graph-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.lg-dot { width: 11px; height: 11px; border-radius: 50%; }
+.lg-pro { background: var(--accent); } .lg-ant { background: var(--node-ant); } .lg-sup { background: var(--gold); }
+.lg-line { width: 18px; height: 2px; background: var(--line-strong); }
+
+/* Plot threads sit on their own band below the (now shorter) graph stage with a
+   clear, larger heading and generous gap so the section never reads as cramped or
+   clipped against the card above. */
+.graph-threads { margin-top: var(--s-7); }
+.graph-threads .rail-title {
+  font-size: var(--t-sm); letter-spacing: .16em; color: var(--ink-soft);
+  margin-bottom: var(--s-4); padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.thread-board { display: grid; gap: var(--s-4); grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.thread-card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: var(--radius); padding: var(--s-4); }
+.thread-card.is-resolved { border-left-color: var(--good); }
+.thread-card h3 { font-family: var(--font-display); font-size: var(--t-md); margin-bottom: var(--s-2); }
+.thread-card p { font-size: var(--t-sm); color: var(--ink-soft); }
+.thread-card .thread-status { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; color: var(--gold); }
+.thread-card.is-resolved .thread-status { color: var(--good); }
+
+/* ----------------------------- MANUSCRIPT ------------------------------- */
+/* Denser, more composed hero: a smaller cover with tighter margins so the prose
+   begins promptly instead of after a tall empty gradient gutter. */
+.manuscript-hero {
+  position: relative; width: 188px; aspect-ratio: 2 / 3; margin: var(--s-2) auto var(--s-3);
+  border-radius: 4px 10px 10px 4px; overflow: hidden;
+  box-shadow: 4px 3px 0 -1px var(--surface-2), 7px 5px 0 -2px color-mix(in srgb, var(--surface-2) 70%, var(--line-strong)), var(--shadow-lg);
+  animation: coverDrop .7s var(--ease) both;
+}
+.manuscript-hero .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.manuscript-hero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 8px; z-index: 3;
+  background: linear-gradient(90deg, rgba(0,0,0,.32), rgba(255,255,255,.1) 70%, transparent); pointer-events: none; }
+/* "Book opening" arrival: the cover lifts/rotates in, then the colophon + paper
+   fade up beneath it. Gated by reduced-motion below. */
+.manuscript-hero { animation: bookOpen .8s var(--ease-spring) both; }
+@keyframes bookOpen {
+  0% { opacity: 0; transform: perspective(900px) rotateY(-22deg) translateY(-6px); transform-origin: left center; }
+  100% { opacity: 1; transform: none; }
+}
+.manuscript-colophon {
+  text-align: center; color: var(--ink-faint); font-family: var(--font-text);
+  font-size: var(--t-sm); letter-spacing: .02em; margin: 0 auto var(--s-4);
+  max-width: 60ch; animation: viewIn .5s var(--ease) .18s both;
+}
+.manuscript-colophon .colophon-sep { color: var(--accent); opacity: .7; margin: 0 .15em; }
+.manuscript-paper {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); max-width: 70ch; margin: 0 auto;
+  /* Tighter top padding so the prose begins promptly under the colophon rather
+     than after a tall empty gutter; sides/bottom keep the roomy book margins. */
+  padding: clamp(var(--s-5), 4.5vw, var(--s-7)) clamp(var(--s-5), 8vw, var(--s-9)) clamp(var(--s-6), 7vw, var(--s-9));
+  font-family: var(--font-display); font-size: var(--t-md); line-height: 1.82; color: var(--ink);
+  animation: viewIn .6s var(--ease) .26s both;
+}
+/* Ornamental chapter divider under each chapter heading. */
+.manuscript-paper .chapter-ornament {
+  text-align: center; color: var(--accent); font-size: var(--t-lg);
+  margin: 0 0 var(--s-5); line-height: 1; opacity: .75; letter-spacing: .4em;
+}
+.manuscript-paper .chapter-ornament::first-letter { all: unset; }
+.manuscript-paper h1 { font-size: var(--t-3xl); text-align: center; margin-bottom: var(--s-7); letter-spacing: -.02em; }
+.manuscript-paper h2 { font-size: var(--t-xl); margin: var(--s-8) 0 var(--s-4); padding-top: var(--s-6); border-top: 1px solid var(--line); }
+.manuscript-paper h2:first-of-type { border-top: none; padding-top: 0; }
+.manuscript-paper p { margin-bottom: 1.05em; text-wrap: pretty; }
+.manuscript-paper p.first-para::first-letter,
+.manuscript-paper h2 + p::first-letter { font-size: 3em; line-height: .8; float: left; padding: .05em .08em 0 0; color: var(--accent); font-weight: 600; }
+.manuscript-paper hr { border: none; text-align: center; margin: var(--s-6) 0; color: var(--ink-faint); }
+.manuscript-paper hr::after { content: "❧"; font-size: var(--t-lg); }
+
+/* ------------------------- 3D PAGE-TURN READER -------------------------- */
+/* Paper tokens for the reader leaves (theme-aware, derived from --surface). */
+.view-manuscript {
+  --leaf-paper: var(--surface);
+  --leaf-paper-2: color-mix(in srgb, var(--surface) 88%, var(--paper));
+  --leaf-edge: color-mix(in srgb, var(--surface) 70%, var(--line-strong));
+}
+.reader-stage {
+  display: flex; align-items: center; justify-content: center; gap: var(--s-3);
+  margin: var(--s-3) auto var(--s-4); max-width: 1100px;
+}
+.reader-book {
+  position: relative; flex: 1 1 auto; max-width: 980px;
+  /* The book's aspect/height: a comfortable spread on desktop, a single page on
+     mobile. clamp keeps it within the viewport so a whole page is always visible. */
+  height: clamp(440px, 74vh, 760px);
+  perspective: 2200px;
+  outline: none; cursor: pointer; touch-action: manipulation;
+}
+.reader-book:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 5px var(--accent); border-radius: 6px; }
+.reader-loading { padding: var(--s-6); max-width: 60ch; margin: 0 auto; }
+
+/* A spread = two leaves with a center gutter + spine shadow. Single = one leaf. */
+.reader-spread {
+  position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr;
+  transform-style: preserve-3d;
+}
+.reader-spread.is-single { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+/* Spine shadow down the gutter (only meaningful in two-up). */
+.reader-spread:not(.is-single)::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 38px; transform: translateX(-50%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 16%, transparent) 46%, color-mix(in srgb, var(--ink) 22%, transparent) 50%, color-mix(in srgb, var(--ink) 16%, transparent) 54%, transparent);
+  pointer-events: none; z-index: 4;
+}
+
+.reader-leaf { position: relative; }
+.leaf-face {
+  position: absolute; inset: 0; overflow: hidden;
+  background: var(--leaf-paper);
+  /* Tasteful paper texture: a faint warm vignette + hair-line fibers. */
+  background-image:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--paper) 40%, transparent), transparent 60%),
+    repeating-linear-gradient(0deg, transparent, transparent 3px, color-mix(in srgb, var(--ink) 2%, transparent) 3px, transparent 4px);
+  box-shadow: var(--shadow-lg);
+}
+.reader-leaf.left .leaf-face { border-radius: 8px 2px 2px 8px;
+  box-shadow: inset -22px 0 26px -24px color-mix(in srgb, var(--ink) 55%, transparent), var(--shadow-lg); }
+.reader-leaf.right .leaf-face { border-radius: 2px 8px 8px 2px;
+  box-shadow: inset 22px 0 26px -24px color-mix(in srgb, var(--ink) 55%, transparent), var(--shadow-lg); }
+.reader-spread.is-single .leaf-face { border-radius: 8px; }
+.reader-leaf.is-blank .leaf-face { background: var(--leaf-paper-2); box-shadow: var(--shadow); }
+
+/* The page content box — paginated text fits exactly here (the measurer copies
+   this padding/typography 1:1). */
+.page-content {
+  position: absolute; inset: 0;
+  padding: clamp(var(--s-5), 3.4vw, var(--s-7)) clamp(var(--s-5), 4vw, var(--s-7)) calc(clamp(var(--s-5), 3.4vw, var(--s-7)) + 1.4em);
+  font-family: var(--font-display); font-size: var(--t-base); line-height: 1.74; color: var(--ink);
+  overflow: hidden; overflow-wrap: break-word;
+}
+.page-content > :first-child { margin-top: 0; }
+.page-content h1 { font-size: var(--t-2xl); text-align: center; margin: .2em 0 .6em; letter-spacing: -.02em; }
+.page-content h2 { font-size: var(--t-xl); margin: 0 0 .3em; text-align: center; }
+.page-content h3 { font-size: var(--t-lg); margin: 1em 0 .4em; }
+.page-content p { margin: 0 0 .85em; text-align: justify; text-wrap: pretty; hyphens: auto; }
+.page-content .chapter-ornament { text-align: center; color: var(--accent); font-size: var(--t-lg); margin: 0 0 1em; letter-spacing: .4em; opacity: .75; }
+.page-content p.first-para::first-letter,
+.page-content h2 + p::first-letter,
+.page-content .chapter-ornament + p::first-letter {
+  font-size: 3.1em; line-height: .78; float: left; padding: .04em .08em 0 0; color: var(--accent); font-weight: 600; font-family: var(--font-display);
+}
+.page-content hr { border: none; text-align: center; margin: 1.1em 0; color: var(--ink-faint); }
+.page-content hr::after { content: "❧"; font-size: var(--t-md); }
+.page-folio { position: absolute; left: 0; right: 0; bottom: .8em; text-align: center; font-family: var(--font-text); font-size: var(--t-xs); color: var(--ink-faint); letter-spacing: .14em; }
+
+/* Cover leaf (page 0): the procedural jacket with depth. */
+.reader-leaf.is-cover .leaf-face { background: transparent; box-shadow: none; overflow: visible; }
+.leaf-cover { position: absolute; inset: 0; border-radius: 4px 10px 10px 4px; overflow: hidden;
+  box-shadow: 4px 3px 0 -1px var(--surface-2), 7px 5px 0 -2px color-mix(in srgb, var(--surface-2) 70%, var(--line-strong)), var(--shadow-lg); }
+.leaf-cover .cover-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.leaf-cover::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 9px; z-index: 3;
+  background: linear-gradient(90deg, rgba(0,0,0,.34), rgba(255,255,255,.1) 70%, transparent); pointer-events: none; }
+.leaf-cover .cover-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 1em; text-align: center; background: var(--fallback-2); color: var(--on-fill); font-family: var(--font-display); }
+.reader-book.is-cover { perspective: 1800px; }
+/* The cover is a single, centered, book-proportioned leaf (not a full spread). */
+.reader-book.is-cover .reader-spread { grid-template-columns: 1fr; }
+.reader-book.is-cover .reader-leaf.right { width: clamp(220px, 34vh, 340px); aspect-ratio: 2 / 3; margin: auto; position: relative; }
+.reader-book.is-cover .reader-leaf.right .leaf-face { position: absolute; }
+/* A soft "open me" hint on the cover (suppressed under reduced-motion). */
+.reader-book.is-cover .leaf-cover { animation: coverIdle 4.2s var(--ease) infinite; transform-origin: left center; }
+@keyframes coverIdle { 0%, 92%, 100% { transform: none; } 96% { transform: perspective(1400px) rotateY(-7deg); } }
+
+/* End / colophon leaf. */
+.leaf-end { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: var(--s-3); padding: var(--s-6); text-align: center; }
+.leaf-end-mark { color: var(--accent); font-size: var(--t-2xl); opacity: .8; margin: 0; }
+.leaf-end-title { font-family: var(--font-display); font-size: var(--t-lg); color: var(--ink); margin: 0; }
+.leaf-end-colophon { font-family: var(--font-text); font-size: var(--t-sm); color: var(--ink-faint); margin: 0; max-width: 28ch; }
+.leaf-end-colophon .colophon-sep { color: var(--accent); opacity: .7; margin: 0 .15em; }
+.leaf-end-imprint { font-family: var(--font-text); font-size: var(--t-xs); letter-spacing: .22em; text-transform: uppercase; color: var(--ink-faint); margin-top: var(--s-4); }
+
+/* The flipping leaf overlay during a turn. */
+.reader-flip {
+  position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 6;
+  transform-style: preserve-3d; transform-origin: left center;
+  transform: rotateY(0deg); pointer-events: none;
+}
+.reader-book:not(.is-twoup) .reader-flip { left: 0; right: auto; width: 100%; }
+.reader-flip .flip-front { position: absolute; inset: 0; backface-visibility: hidden; }
+.reader-flip .reader-leaf { position: absolute; inset: 0; }
+.reader-flip.is-turning { transition: transform .56s var(--ease); }
+.reader-flip.fwd.is-turning { transform: rotateY(-172deg); box-shadow: -30px 0 40px -20px rgba(0,0,0,.4); }
+.reader-flip.back { transform: rotateY(-172deg); transform-origin: left center; }
+.reader-flip.back.is-turning { transform: rotateY(0deg); }
+/* Page-curl shading on the turning leaf. */
+.reader-flip::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 26%, transparent), transparent 30%);
+  opacity: 0; transition: opacity .56s var(--ease); border-radius: 2px 8px 8px 2px; }
+.reader-flip.is-turning::after { opacity: 1; }
+
+/* Reduced-motion / instant swap cross-fade. */
+.reader-book.is-fade .reader-spread { animation: readerFade .18s var(--ease); }
+@keyframes readerFade { from { opacity: .25; } to { opacity: 1; } }
+
+/* On-screen prev/next controls. */
+.reader-nav {
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--surface); color: var(--ink-soft);
+  border: 1px solid var(--line); box-shadow: var(--shadow); cursor: pointer;
+  transition: transform var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.reader-nav:hover { color: var(--accent); border-color: var(--accent); transform: scale(1.06); }
+.reader-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Progress tray: a slim scrubber + page readout. */
+.reader-tray { display: flex; align-items: center; gap: var(--s-4); max-width: 640px; margin: 0 auto var(--s-5); }
+.reader-scrubber { flex: 1 1 auto; accent-color: var(--accent); height: 4px; cursor: pointer; }
+.reader-scrubber:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.reader-readout { flex: 0 0 auto; font-family: var(--font-text); font-size: var(--t-sm); color: var(--ink-faint); letter-spacing: .02em; min-width: 9ch; text-align: right; }
+
+/* Hidden measuring page: identical content box, off-screen, never painted. */
+.reader-probe-host { position: absolute; left: -99999px; top: 0; width: 100%; height: 100%; visibility: hidden; pointer-events: none; }
+
+@media (max-width: 759px) {
+  .reader-nav { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-book.is-cover .leaf-cover { animation: none; }
+  .reader-flip { display: none !important; }
+}
+
+/* ----------------------------- SKELETON --------------------------------- */
+.skeleton { position: relative; overflow: hidden; background: var(--surface-2); border-radius: var(--radius-sm); }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent);
+  animation: shimmer 1.4s infinite; }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.sk-card { aspect-ratio: 2 / 3; height: auto; border-radius: 4px 9px 9px 4px; box-shadow: var(--shadow); }
+.sk-line { height: 1em; margin-bottom: .8em; }
+.sk-line.w-60 { width: 60%; } .sk-line.w-80 { width: 80%; } .sk-line.w-40 { width: 40%; }
+
+/* ----------------------------- TOASTS ----------------------------------- */
+.toast-region { position: fixed; bottom: var(--s-5); right: var(--s-5); z-index: 80; display: grid; gap: var(--s-3); max-width: min(92vw, 380px); }
+.toast { display: flex; align-items: flex-start; gap: var(--s-3); background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: var(--radius); padding: var(--s-4); box-shadow: var(--shadow-lg); animation: toastIn .35s var(--ease) both; }
+.toast.is-out { animation: toastOut .3s var(--ease) forwards; }
+.toast.t-good { border-left-color: var(--good); }
+.toast.t-error { border-left-color: var(--bad); }
+.toast-icon { flex: 0 0 auto; margin-top: 1px; }
+.toast.t-good .toast-icon { color: var(--good); } .toast.t-error .toast-icon { color: var(--bad); } .toast.t-info .toast-icon { color: var(--accent); }
+.toast-body { font-size: var(--t-sm); }
+.toast-body strong { display: block; }
+.toast-body span { color: var(--ink-soft); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(20px); } }
+
+/* ----------------------------- RESPONSIVE ------------------------------- */
+@media (max-width: 1080px) {
+  .studio-grid { grid-template-columns: 220px minmax(0, 1fr); }
+  /* Below the reader, the cost card reads well full-width; cast/threads then
+     flow beneath rather than orphaning a half-width column with short lists. */
+  .studio-meta { grid-column: 1 / -1; position: static; display: grid; grid-template-columns: 1fr; gap: var(--s-4); align-items: start; }
+  .continuity-card { margin-top: 0; }
+  /* On the full-width strip the cost hero and the readout sit side by side so the
+     card stays compact instead of a tall stack. */
+  .studio-meta .cost-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--s-4) var(--s-6); align-items: start; }
+  .studio-meta .cost-card .rail-title,
+  .studio-meta .cost-card .cost-progress,
+  .studio-meta .cost-card .cache-savings,
+  .studio-meta .cost-card .token-details { grid-column: 1 / -1; }
+  .studio-meta .cost-card .cost-readout { margin-top: 0; }
+}
+@media (max-width: 760px) {
+  .studio-meta .cost-card { grid-template-columns: 1fr; }
+  .studio-meta .cost-card .cost-readout { margin-top: var(--s-5); }
+}
+@media (max-width: 760px) {
+  .app { padding: var(--s-5) var(--s-4) var(--s-8); }
+  .topnav { display: none; }
+  .field-row { grid-template-columns: 1fr; }
+  .composer { padding: var(--s-5); }
+  .studio-grid { grid-template-columns: 1fr; }
+  .studio-rail { position: static; }
+  .chapter-list { max-height: none; }
+  .studio-meta { grid-template-columns: 1fr; }
+  .studio-head-actions { width: 100%; justify-content: space-between; }
+  .reader-body { padding: var(--s-5); }
+  .studio-cover { width: 64px; }
+  .manuscript-hero { width: 168px; }
+}
+@media (max-width: 480px) {
+  .studio-cover { display: none; }
+}
+/* On small screens the orange DEMO pill on a cover thumbnail (and the top "Demo
+   mode only" chip) over-dominate the first impression. Soften both: smaller,
+   lower-opacity, tucked into the corner — the info stays, the cover reads clean. */
+@media (max-width: 620px) {
+  .card-mock {
+    top: 6px; right: 6px;
+    font-size: 8px; padding: 2px 6px; letter-spacing: .04em;
+    opacity: .82; background: color-mix(in srgb, var(--warn) 78%, #000);
+    box-shadow: none; backdrop-filter: blur(2px);
+  }
+  /* Demo-mode top chip: drop the wordmark to a quiet dot + short label so it
+     doesn't shout on a narrow bar. */
+  .api-pill.is-demo { font-size: 0; gap: 0; padding: var(--s-2); border-color: color-mix(in srgb, var(--warn) 30%, var(--line)); }
+  .api-pill.is-demo .dot { width: 9px; height: 9px; }
+}
+
+/* Focus visibility everywhere */
+a:focus-visible, button:focus-visible, [tabindex]:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}
+/* A stronger selection so highlighting prose in the reader is obvious on the
+   warm paper (the pale --accent-soft was barely perceptible over --surface). */
+::selection { background: color-mix(in srgb, var(--accent) 28%, var(--paper)); color: var(--accent-strong); }
+:root[data-theme="dark"] ::selection { background: color-mix(in srgb, var(--accent) 36%, var(--paper)); color: var(--ink); }
+
+/* Scrollbar */
+.chapter-list::-webkit-scrollbar, .reader-body::-webkit-scrollbar { width: 8px; }
+.chapter-list::-webkit-scrollbar-thumb, .reader-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; }
+
+/* ----------------------------- GRAIN OVERLAY ---------------------------- */
+/* A faint, fixed, full-page paper grain. Pure decoration; never interactive.
+   Uses an inline SVG fractal-noise data URI so it works fully offline. */
+.grain-overlay {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  opacity: .035; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] .grain-overlay { opacity: .05; mix-blend-mode: screen; }
+/* keep the grain behind content but above the page background */
+.topbar, .app, .toast-region { position: relative; z-index: 2; }
+
+/* ----------------------------- FLOURISH --------------------------------- */
+/* Completion flourish: a foil ring that expands + drifting ember sparks.
+   Appended into a target element by app.js, then removed after the animation. */
+.flourish { position: absolute; inset: 0; pointer-events: none; z-index: 6; overflow: visible;
+  display: grid; place-items: center; }
+.flourish-ring {
+  position: absolute; width: 40%; aspect-ratio: 1; border-radius: 50%;
+  border: 2px solid var(--gold); opacity: 0;
+  animation: flourishRing 1s var(--ease) forwards;
+}
+.flourish.is-grand .flourish-ring { width: 70%; border-color: var(--accent); }
+@keyframes flourishRing { 0% { transform: scale(.3); opacity: .9; } 100% { transform: scale(1.5); opacity: 0; } }
+.flourish-spark {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 8px var(--gold);
+  animation: flourishSpark var(--d, .8s) var(--ease) forwards;
+}
+.flourish.is-grand .flourish-spark { background: var(--accent); box-shadow: 0 0 10px var(--accent); width: 7px; height: 7px; }
+@keyframes flourishSpark {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx, 0), var(--dy, 0)) scale(.3); opacity: 0; }
+}
+
+/* ----------------------------- GLOBAL CRAFT ----------------------------- */
+/* Consistent hover lift on the profile/cost cards; immaculate active states. */
+.cost-total { transition: color var(--dur) var(--ease); }
+/* Make headline numerals feel "live" while a tween is running (handled in JS). */
+.btn-primary:active { box-shadow: var(--shadow-sm); }
+/* Slightly tighter, more confident card titles on large shelves. */
+@media (min-width: 1100px) {
+  .book-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+}
+
+/* Honour reduced-motion for the bespoke decorations too. */
+@media (prefers-reduced-motion: reduce) {
+  .empty-shelf .es-quill, .progress-fill.is-complete, .studio-cover, .manuscript-hero,
+  .empty-shelf .es-stack rect, .hero-book, .hero-body, .hero-shelf, .book-card.card-enter,
+  .manuscript-colophon, .manuscript-paper { animation: none !important; }
+  .flourish { display: none !important; }
+  .book-card, .book-card:hover { transform: none !important; }
+  /* Keep the hero's standing-book tilt + spine lean as static composition (no
+     entrance/hover motion). Don't zero the base transforms — they're the look. */
+  .library-hero:hover { transform: none !important; }
+  .library-hero:hover .hero-book { transform: rotateY(-13deg) rotateX(2deg) !important; }
+  .library-hero:hover .hero-cta { transform: none !important; }
+  .forge-book.is-stamp, .forge-book.is-binding { animation: none !important; }
+  .reader-body { scroll-behavior: auto; }
+  /* Steady the streaming caret to a static insertion bar (no frozen blink). */
+  .reader-body.is-streaming p:last-of-type::after,
+  .reader-body.is-streaming > p:last-child::after { animation: none !important; opacity: 1 !important; }
+  /* The writing-row "breathe" settles to a steady tint + ring (no pulsing). */
+  .chapter-item.is-writing { animation: none !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent); }
+}
+
+/* ===========================================================================
+   COMMAND PALETTE (⌘K / Ctrl-K), SHORTCUTS HELP, SKIP LINK, VIEW TRANSITIONS
+   Editorial overlay system — paper surface, serif accents, the ember accent.
+   Markup is built by palette.js. Fully keyboard-accessible; theme-parity.
+   =========================================================================== */
+
+/* Lock background scroll while an overlay is open. */
+body.cmdk-lock { overflow: hidden; }
+
+/* Skip-to-content link: first focusable element, visible only on focus. */
+.skip-link {
+  position: fixed; top: 0; left: 50%; transform: translate(-50%, -120%);
+  z-index: 120; padding: var(--s-3) var(--s-5); border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: var(--t-sm);
+  box-shadow: var(--shadow-lg); transition: transform var(--dur) var(--ease);
+}
+.skip-link:focus-visible { transform: translate(-50%, 0); outline: 2px solid var(--accent-ink); outline-offset: -5px; }
+
+/* ---- shared overlay scrim ---- */
+.cmdk-overlay, .help-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; align-items: start; justify-items: center;
+  padding: clamp(var(--s-6), 12vh, 18vh) var(--s-4) var(--s-6);
+  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  backdrop-filter: blur(3px) saturate(1.1);
+  opacity: 0; transition: opacity var(--dur) var(--ease);
+}
+.help-overlay { align-items: center; }
+.cmdk-overlay.is-open, .help-overlay.is-open { opacity: 1; }
+.cmdk-overlay.is-closing { opacity: 0; }
+
+/* ---- palette panel ---- */
+.cmdk-panel {
+  width: min(620px, 100%); max-height: min(70vh, 560px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-12px) scale(.985); opacity: .6;
+  transition: transform var(--dur) var(--ease-spring), opacity var(--dur) var(--ease);
+}
+.cmdk-overlay.is-open .cmdk-panel { transform: none; opacity: 1; }
+.cmdk-overlay.is-closing .cmdk-panel { transform: translateY(-8px) scale(.99); opacity: 0; }
+
+.cmdk-search {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--line);
+  background: var(--paper-2);
+}
+.cmdk-search-icon { color: var(--accent); flex: 0 0 auto; }
+.cmdk-input {
+  flex: 1; min-width: 0; border: none; background: transparent; outline: none;
+  font-family: var(--font-display); font-size: var(--t-lg); color: var(--ink); padding: 0;
+}
+.cmdk-input::placeholder { color: var(--ink-faint); font-family: var(--font-text); font-size: var(--t-md); }
+.cmdk-input:focus { box-shadow: none; }
+.cmdk-esc, .cmdk-foot kbd, .cmdk-keys kbd, .help-keys kbd {
+  font-family: var(--font-mono); font-size: 11px; line-height: 1; color: var(--ink-soft);
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: 6px; padding: 3px 6px; min-width: 18px; text-align: center;
+}
+.cmdk-esc { flex: 0 0 auto; }
+
+.cmdk-list { flex: 1; overflow-y: auto; padding: var(--s-2); margin: 0; }
+.cmdk-group {
+  font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .14em; font-weight: 700;
+  color: var(--ink-faint); padding: var(--s-3) var(--s-3) var(--s-1);
+}
+.cmdk-opt {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: var(--s-3); border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid transparent; scroll-margin: var(--s-2);
+}
+.cmdk-opt.is-active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.cmdk-opt-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: var(--radius-sm); background: var(--surface-2); color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.cmdk-opt.is-active .cmdk-opt-icon { background: var(--surface); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.cmdk-opt-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.cmdk-opt-title {
+  font-size: var(--t-sm); font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cmdk-opt-title mark { background: transparent; color: var(--accent); font-weight: 700; }
+.cmdk-opt.is-active .cmdk-opt-title mark { color: var(--accent-strong); }
+.cmdk-opt-hint {
+  font-size: var(--t-xs); color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cmdk-keys { flex: 0 0 auto; display: flex; gap: 4px; }
+.cmdk-empty { padding: var(--s-6) var(--s-4); text-align: center; color: var(--ink-faint); font-style: italic; }
+.cmdk-foot {
+  display: flex; gap: var(--s-5); padding: var(--s-3) var(--s-5);
+  border-top: 1px solid var(--line); background: var(--paper-2);
+  font-size: var(--t-xs); color: var(--ink-faint);
+}
+.cmdk-foot span { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 520px) { .cmdk-foot span:last-child { display: none; } }
+
+/* ---- shortcuts help modal ---- */
+.help-panel {
+  width: min(440px, 100%);
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); padding: var(--s-6);
+  transform: translateY(-10px) scale(.985); opacity: .6;
+  transition: transform var(--dur) var(--ease-spring), opacity var(--dur) var(--ease);
+}
+.help-overlay.is-open .help-panel { transform: none; opacity: 1; }
+.help-head { display: grid; grid-template-columns: 1fr auto; align-items: start; margin-bottom: var(--s-5); }
+.help-head .eyebrow { grid-column: 1; }
+.help-head h2 { grid-column: 1; font-size: var(--t-2xl); margin-top: 2px; }
+.help-close {
+  grid-column: 2; grid-row: 1 / span 2; align-self: start;
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.help-close:hover { color: var(--accent); border-color: var(--line-strong); }
+.help-rows { display: grid; gap: var(--s-1); }
+.help-row {
+  display: grid; grid-template-columns: 124px 1fr; align-items: center; gap: var(--s-4);
+  padding: var(--s-2) var(--s-2); border-radius: var(--radius-sm);
+}
+.help-row:nth-child(odd) { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+.help-keys { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.help-then { font-size: var(--t-xs); color: var(--ink-faint); font-style: italic; }
+.help-desc { font-size: var(--t-sm); color: var(--ink-soft); }
+.help-foot { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--line);
+  font-size: var(--t-xs); color: var(--ink-faint); }
+
+/* ---- View Transitions: refined cross-fade + slight slide via --ease ---- */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--dur);
+    animation-timing-function: var(--ease);
+  }
+  ::view-transition-old(root) { animation-name: vtFadeOut; }
+  ::view-transition-new(root) { animation-name: vtFadeIn; }
+  @keyframes vtFadeOut { to { opacity: 0; transform: translateY(-6px); } }
+  @keyframes vtFadeIn { from { opacity: 0; transform: translateY(8px); } }
+  /* The per-view `viewIn` keyframe is redundant during a real cross-fade and
+     would double-animate; suppress it only while a transition is running. */
+  .vt-active .view { animation: none; }
+}
+
+/* Reduced-motion: overlays appear/disappear instantly, no panel spring, and
+   no view-transition pseudo animations. */
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-overlay, .help-overlay,
+  .cmdk-panel, .help-panel { transition: none !important; }
+  .cmdk-panel, .help-panel { transform: none !important; opacity: 1 !important; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+}

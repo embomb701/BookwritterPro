@@ -1,0 +1,130 @@
+"""LLM client abstraction.
+
+A thin protocol (`LLM`) plus the real `AnthropicLLM` implementation. The protocol
+lets the pipeline run against a mock with zero network/credentials (see
+``mock.py``), which is how the test suite and ``--mock`` smoke runs work.
+
+Two entry points:
+  * ``complete_json``  — structured output via ``output_config.format`` (planner, extractor, checker)
+  * ``complete_text``  — streamed prose (chapter writer)
+
+Both accept an optional ``cached`` block (the stable bible). When caching is on,
+it is emitted as a ``cache_control`` system block — paid ~1.25-2x once, then read
+at ~0.1x on every subsequent chapter. That is the core token-cost lever.
+"""
+from __future__ import annotations
+
+import json
+from typing import Any, Callable, Dict, List, Optional, Protocol
+
+from .config import StageModel, EFFORT_CAPABLE
+from .costs import CostLedger, Usage
+
+
+class LLM(Protocol):
+    def complete_json(
+        self, *, stage: str, model: StageModel, system: str, user: str,
+        schema: Dict[str, Any], max_tokens: int, ledger: CostLedger,
+        cached: Optional[str] = None, use_cache: bool = True, cache_ttl: str = "1h",
+    ) -> Dict[str, Any]: ...
+
+    def complete_text(
+        self, *, stage: str, model: StageModel, system: str, user: str,
+        max_tokens: int, ledger: CostLedger,
+        cached: Optional[str] = None, use_cache: bool = True, cache_ttl: str = "1h",
+        on_delta: Optional[Callable[[str], None]] = None,
+    ) -> str: ...
+
+
+def _build_system(system: str, cached: Optional[str], use_cache: bool, cache_ttl: str) -> List[Dict[str, Any]]:
+    blocks: List[Dict[str, Any]] = [{"type": "text", "text": system}]
+    if cached:
+        block: Dict[str, Any] = {"type": "text", "text": cached}
+        if use_cache:
+            block["cache_control"] = {"type": "ephemeral", "ttl": cache_ttl}
+        blocks.append(block)
+    return blocks
+
+
+def _thinking_param(sm: StageModel) -> Dict[str, Any]:
+    return {"type": "adaptive"} if sm.thinking else {"type": "disabled"}
+
+
+def _output_config(sm: StageModel, fmt: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    cfg: Dict[str, Any] = {}
+    if sm.model in EFFORT_CAPABLE:
+        cfg["effort"] = sm.effort
+    if fmt is not None:
+        cfg["format"] = fmt
+    return cfg or None
+
+
+class AnthropicLLM:
+    """Real client. Imports the SDK lazily so the package imports without it."""
+
+    def __init__(self, api_key: Optional[str] = None):
+        try:
+            import anthropic  # noqa: F401
+        except ImportError as e:  # pragma: no cover - environment dependent
+            raise RuntimeError(
+                "The 'anthropic' package is required for live generation. "
+                "Install it with: pip install anthropic"
+            ) from e
+        self._anthropic = anthropic
+        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+
+    # ------------------------------------------------------------------
+    def complete_json(self, *, stage, model, system, user, schema, max_tokens,
+                       ledger, cached=None, use_cache=True, cache_ttl="1h"):
+        sys_blocks = _build_system(system, cached, use_cache, cache_ttl)
+        out_cfg = _output_config(model, fmt={"type": "json_schema", "schema": schema})
+        params: Dict[str, Any] = {
+            "model": model.model,
+            "max_tokens": max_tokens,
+            "system": sys_blocks,
+            "messages": [{"role": "user", "content": user}],
+            "thinking": _thinking_param(model),
+            "output_config": out_cfg,
+        }
+        resp = self.client.messages.create(**params)
+        self._record(ledger, stage, model.model, resp, cache_ttl)
+        text = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
+        return json.loads(text) if text else {}
+
+    # ------------------------------------------------------------------
+    def complete_text(self, *, stage, model, system, user, max_tokens,
+                      ledger, cached=None, use_cache=True, cache_ttl="1h", on_delta=None):
+        sys_blocks = _build_system(system, cached, use_cache, cache_ttl)
+        out_cfg = _output_config(model)
+        kwargs: Dict[str, Any] = {
+            "model": model.model,
+            "max_tokens": max_tokens,
+            "system": sys_blocks,
+            "messages": [{"role": "user", "content": user}],
+            "thinking": _thinking_param(model),
+        }
+        if out_cfg:
+            kwargs["output_config"] = out_cfg
+        # Stream long prose to avoid SDK HTTP timeouts on large max_tokens, and to
+        # forward live text deltas to the UI when on_delta is provided.
+        with self.client.messages.stream(**kwargs) as stream:
+            if on_delta is not None:
+                for chunk in stream.text_stream:
+                    on_delta(chunk)
+            final = stream.get_final_message()
+        self._record(ledger, stage, model.model, final, cache_ttl)
+        return "".join(b.text for b in final.content if getattr(b, "type", "") == "text")
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _record(ledger: CostLedger, stage: str, model: str, resp: Any, cache_ttl: str) -> None:
+        u = resp.usage
+        ledger.add(Usage(
+            model=model,
+            stage=stage,
+            input_tokens=getattr(u, "input_tokens", 0) or 0,
+            output_tokens=getattr(u, "output_tokens", 0) or 0,
+            cache_creation_tokens=getattr(u, "cache_creation_input_tokens", 0) or 0,
+            cache_read_tokens=getattr(u, "cache_read_input_tokens", 0) or 0,
+            cache_ttl=cache_ttl,
+        ))

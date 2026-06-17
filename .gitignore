@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+# generated book projects
+/book/
+/*book*/book.json
+*.egg-info/
+.pytest_cache/
+# server data + scratch
+.bookwriter_data/
+.demo_data/
+# internal screenshot/workflow tooling (local absolute paths; not part of the product)
+.wf/

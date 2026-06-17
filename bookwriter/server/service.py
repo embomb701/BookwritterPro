@@ -1,0 +1,444 @@
+"""BookService — the application layer between the HTTP API and the core engine.
+
+Owns the books data directory, meta.json bookkeeping, LLM/Settings construction
+(mock vs live), and the background write-job lifecycle. Every method that the API
+exposes routes through here; the API module only deals with HTTP concerns.
+
+The write job runs ``BookPipeline.write_all`` on a daemon thread; its on_event
+callback publishes structured events to the :class:`EventBroker`, which the SSE
+endpoint replays-then-tails. Exactly one job per book id (enforced by the broker).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import threading
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from ..config import (
+    Settings,
+    QUALITY_PROFILES,
+    DEFAULT_PROFILE,
+    MODEL_PRICES,
+)
+from ..mock import MockLLM
+from ..pipeline import BookPipeline
+from ..store import BookStore
+from .broker import EventBroker
+
+
+class ServiceError(Exception):
+    """Raised for expected, client-facing failures; carries an HTTP status."""
+
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _slug(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    return s[:48] or "book"
+
+
+# The exact shape of an id we mint: a lowercase slug + "-" + 6 hex chars. We
+# reject anything else, which structurally forbids path traversal (no "/", "\",
+# "..", absolute paths, drive letters, NUL, etc.) before any os.path.join.
+_BOOK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+def validate_book_id(book_id: str) -> str:
+    """Return ``book_id`` if it is a safe, well-formed id, else raise 404.
+
+    Used by every entry point that turns a caller-supplied id into a path, so
+    read/write/delete all inherit containment. Raising 404 (not 400) avoids
+    leaking whether a given path exists on disk.
+    """
+    if not isinstance(book_id, str) or not _BOOK_ID_RE.match(book_id):
+        raise ServiceError(404, f"Book {book_id!r} not found.")
+    return book_id
+
+
+class BookService:
+    def __init__(self, data_dir: str, broker: Optional[EventBroker] = None) -> None:
+        self.data_dir = os.path.abspath(data_dir)
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.broker = broker or EventBroker()
+        self._threads: Dict[str, threading.Thread] = {}
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    # Paths / meta
+    # ------------------------------------------------------------------ #
+    def _book_dir(self, book_id: str) -> str:
+        validate_book_id(book_id)
+        return os.path.join(self.data_dir, book_id)
+
+    def _meta_path(self, book_id: str) -> str:
+        return os.path.join(self._book_dir(book_id), "meta.json")
+
+    def _book_exists(self, book_id: str) -> bool:
+        return os.path.isfile(self._meta_path(book_id))
+
+    def _read_meta(self, book_id: str) -> Dict[str, Any]:
+        with open(self._meta_path(book_id), "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _write_meta(self, book_id: str, meta: Dict[str, Any]) -> None:
+        os.makedirs(self._book_dir(book_id), exist_ok=True)
+        with open(self._meta_path(book_id), "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
+
+    def _require_meta(self, book_id: str) -> Dict[str, Any]:
+        if not self._book_exists(book_id):
+            raise ServiceError(404, f"Book {book_id!r} not found.")
+        return self._read_meta(book_id)
+
+    def _make_id(self, title: str) -> str:
+        base = _slug(title)
+        h = hashlib.sha256(f"{title}{time.time()}".encode("utf-8")).hexdigest()[:6]
+        book_id = f"{base}-{h}"
+        # Extremely unlikely collision guard.
+        while self._book_exists(book_id):
+            h = hashlib.sha256(f"{book_id}{time.time()}".encode("utf-8")).hexdigest()[:6]
+            book_id = f"{base}-{h}"
+        return book_id
+
+    # ------------------------------------------------------------------ #
+    # LLM / Settings construction
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def has_api_key() -> bool:
+        return bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+    def _make_llm(self, mock: bool):
+        if mock:
+            return MockLLM()
+        # Imported lazily so the server boots even without the anthropic SDK.
+        from ..llm import AnthropicLLM
+
+        return AnthropicLLM(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    def _make_settings(self, meta: Dict[str, Any], book_id: str) -> Settings:
+        profile = meta.get("profile", DEFAULT_PROFILE)
+        if profile not in QUALITY_PROFILES:
+            profile = DEFAULT_PROFILE
+        s = Settings(project_dir=self._book_dir(book_id)).with_profile(profile)
+        s.use_cache = bool(meta.get("use_cache", True))
+        s.run_continuity_check = bool(meta.get("run_continuity_check", True))
+        return s
+
+    # ------------------------------------------------------------------ #
+    # Profiles
+    # ------------------------------------------------------------------ #
+    def profiles(self) -> Dict[str, Any]:
+        # Contract-authoritative shape: plan/write/extract are BARE model
+        # strings; only `check` is an object {model, effort}. This matches the
+        # MCP server's _profiles_payload() so HTTP, MCP and the frontend all
+        # agree on one shape.
+        out: List[Dict[str, Any]] = []
+        for name, p in QUALITY_PROFILES.items():
+            prices: Dict[str, Dict[str, float]] = {}
+            for sm in (p.plan, p.write, p.extract, p.check):
+                price = MODEL_PRICES.get(sm.model)
+                if price is not None:
+                    prices[sm.model] = {"input": price.input, "output": price.output}
+            stages = {
+                "plan": p.plan.model,
+                "write": p.write.model,
+                "extract": p.extract.model,
+                "check": {"model": p.check.model, "effort": p.check.effort},
+            }
+            out.append({"name": name, "stages": stages, "prices": prices})
+        return {"default": DEFAULT_PROFILE, "profiles": out}
+
+    # ------------------------------------------------------------------ #
+    # Summaries
+    # ------------------------------------------------------------------ #
+    def _summary(self, book_id: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+        store = BookStore(self._book_dir(book_id))
+        bible = store.load_bible()
+        chapters_total = len(bible.outline) if bible else 0
+        chapters_written = 0
+        words = 0
+        if bible:
+            for p in bible.outline:
+                if store.has_chapter(p.number):
+                    chapters_written += 1
+                    try:
+                        rec = self._load_chapter_record(store, p.number)
+                        if rec is not None:
+                            words += int(rec.get("word_count", 0) or 0)
+                    except Exception:
+                        pass
+        return {
+            "id": book_id,
+            "title": meta.get("title") or (bible.title if bible else "") or "Untitled",
+            "logline": meta.get("logline") or (bible.logline if bible else ""),
+            "genre": meta.get("genre") or (bible.genre if bible else ""),
+            "chapters_total": chapters_total,
+            "chapters_written": chapters_written,
+            "words": words,
+            "created_at": meta.get("created_at", ""),
+            "profile": meta.get("profile", DEFAULT_PROFILE),
+            "mock": bool(meta.get("mock", False)),
+        }
+
+    def list_books(self) -> Dict[str, Any]:
+        books: List[Dict[str, Any]] = []
+        for entry in sorted(os.listdir(self.data_dir)):
+            book_id = entry
+            if not self._book_exists(book_id):
+                continue
+            try:
+                meta = self._read_meta(book_id)
+                books.append(self._summary(book_id, meta))
+            except Exception:
+                continue
+        books.sort(key=lambda b: b.get("created_at", ""), reverse=True)
+        return {"books": books}
+
+    # ------------------------------------------------------------------ #
+    # Create (plan synchronously)
+    # ------------------------------------------------------------------ #
+    def create_book(self, req: "CreateBookRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        if req.profile not in QUALITY_PROFILES:
+            raise ServiceError(
+                400,
+                f"Unknown profile {req.profile!r}; choose from {sorted(QUALITY_PROFILES)}.",
+            )
+        if not req.mock and not self.has_api_key():
+            raise ServiceError(
+                400,
+                "No ANTHROPIC_API_KEY set; enable demo mode (mock) or set a key.",
+            )
+
+        title_hint = req.title or req.premise
+        book_id = self._make_id(title_hint)
+        meta = {
+            "id": book_id,
+            "title": req.title or "",
+            "created_at": _now_iso(),
+            "profile": req.profile,
+            "mock": bool(req.mock),
+            "genre": req.genre or "",
+            "logline": "",
+            "use_cache": bool(req.use_cache),
+            "run_continuity_check": bool(req.run_continuity_check),
+        }
+        self._write_meta(book_id, meta)
+
+        try:
+            settings = self._make_settings(meta, book_id)
+            llm = self._make_llm(req.mock)
+            pipe = BookPipeline(llm, settings)
+            bible = pipe.plan(
+                premise=req.premise,
+                chapters=req.chapters,
+                words_per_chapter=req.words_per_chapter,
+                title=req.title,
+                genre=req.genre,
+                extra_guidance=req.guidance or "",
+            )
+        except ServiceError:
+            raise
+        except Exception as e:
+            # Planning failed — clean up the half-created book dir.
+            shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
+            raise ServiceError(500, f"Planning failed: {e}")
+
+        # A user-supplied title is authoritative; otherwise use the planned one.
+        if req.title:
+            bible.title = req.title
+            BookStore(self._book_dir(book_id)).save_bible(bible)
+        meta["title"] = (req.title or bible.title) or meta["title"]
+        meta["genre"] = req.genre or bible.genre or meta["genre"]
+        meta["logline"] = bible.logline or meta["logline"]
+        self._write_meta(book_id, meta)
+
+        return {
+            "book": self._summary(book_id, meta),
+            "bible": bible.to_dict(),
+        }
+
+    # ------------------------------------------------------------------ #
+    # Read
+    # ------------------------------------------------------------------ #
+    def get_book(self, book_id: str) -> Dict[str, Any]:
+        meta = self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        bible = store.load_bible()
+        if bible is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        chapters = []
+        for p in bible.outline:
+            written = store.has_chapter(p.number)
+            word_count = 0
+            title = p.title
+            if written:
+                try:
+                    rec = self._load_chapter_record(store, p.number)
+                    if rec is not None:
+                        word_count = rec.get("word_count", 0)
+                        title = rec.get("title", p.title)
+                except Exception:
+                    pass
+            chapters.append({
+                "number": p.number,
+                "title": title,
+                "act": p.act,
+                "written": written,
+                "word_count": word_count,
+            })
+        return {
+            "book": self._summary(book_id, meta),
+            "bible": bible.to_dict(),
+            "chapters": chapters,
+            "cost": self._cost_snapshot(book_id),
+        }
+
+    @staticmethod
+    def _load_chapter_record(store: BookStore, n: int) -> Optional[Dict[str, Any]]:
+        path = store.chapter_json(n)
+        if not os.path.isfile(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def get_chapter(self, book_id: str, n: int) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        bible = store.load_bible()
+        if bible is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        plan = bible.plan(n)
+        if plan is None:
+            raise ServiceError(404, f"Chapter {n} not in outline.")
+        rec = self._load_chapter_record(store, n)
+        written = rec is not None
+        return {
+            "number": n,
+            "title": (rec.get("title") if rec else None) or plan.title,
+            "text": (rec.get("text") if rec else "") or "",
+            "word_count": (rec.get("word_count") if rec else 0) or 0,
+            "synopsis_line": (rec.get("synopsis_line") if rec else "") or "",
+            "fingerprint": (rec.get("fingerprint") if rec else "") or "",
+            "written": written,
+            "plan": plan.to_dict(),
+        }
+
+    def get_graph(self, book_id: str) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        b = graph.bible
+        return {
+            "characters": [c.to_dict() for c in b.characters],
+            "locations": [l.to_dict() for l in b.locations],
+            "items": [i.to_dict() for i in b.items],
+            "threads": [t.to_dict() for t in b.threads],
+            "timeline": [e.to_dict() for e in graph.timeline],
+            "synopsis": list(graph.synopsis),
+        }
+
+    def _cost_snapshot(self, book_id: str) -> Optional[Dict[str, Any]]:
+        path = os.path.join(self._book_dir(book_id), "cost.json")
+        if not os.path.isfile(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    def get_cost(self, book_id: str) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        snapshot = self._cost_snapshot(book_id)
+        report = ""
+        path = os.path.join(self._book_dir(book_id), "cost.txt")
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    report = f.read()
+            except Exception:
+                report = ""
+        return {"snapshot": snapshot, "report": report}
+
+    def get_manuscript(self, book_id: str) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        markdown = store.assemble_manuscript(graph)
+        return {"markdown": markdown, "words": len(markdown.split())}
+
+    # ------------------------------------------------------------------ #
+    # Delete
+    # ------------------------------------------------------------------ #
+    def delete_book(self, book_id: str) -> Dict[str, Any]:
+        self._require_meta(book_id)
+        if self.broker.is_running(book_id):
+            raise ServiceError(409, "A write job is running for this book; cannot delete.")
+        shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
+        # Release the in-memory event ring so deleted books don't leak their
+        # (full-text) event buffer for the process lifetime.
+        self.broker.drop(book_id)
+        return {"status": "deleted"}
+
+    # ------------------------------------------------------------------ #
+    # Write (background job)
+    # ------------------------------------------------------------------ #
+    def start_write(self, book_id: str, req: "WriteRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        meta = self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        if store.load_bible() is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        if not meta.get("mock", False) and not self.has_api_key():
+            raise ServiceError(
+                400,
+                "No ANTHROPIC_API_KEY set; enable demo mode (mock) or set a key.",
+            )
+
+        # Reserve the running slot atomically; broker enforces one-job-per-book.
+        if not self.broker.start_job(book_id):
+            raise ServiceError(409, "A write job is already running for this book.")
+
+        only = req.only or None
+        restart = bool(req.restart)
+        mock = bool(meta.get("mock", False))
+
+        def _run() -> None:
+            try:
+                settings = self._make_settings(meta, book_id)
+                llm = self._make_llm(mock)
+
+                def on_event(event: Dict[str, Any]) -> None:
+                    self.broker.publish(book_id, event)
+
+                pipe = BookPipeline(
+                    llm, settings, on_event=on_event, stream_prose=True
+                )
+                if not pipe.load():
+                    raise RuntimeError("No plan found for this book.")
+                pipe.write_all(resume=not restart, only=only)
+                self.broker.publish(book_id, {"type": "done"})
+            except Exception as e:  # noqa: BLE001 - surfaced to the client via SSE
+                self.broker.publish(book_id, {"type": "error", "message": str(e)})
+
+        t = threading.Thread(target=_run, name=f"write-{book_id}", daemon=True)
+        with self._lock:
+            self._threads[book_id] = t
+        t.start()
+        return {"status": "started"}
