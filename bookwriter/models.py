@@ -8,13 +8,43 @@ footprint small is the point.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, MISSING
 from typing import Dict, List, Optional, Any
 
 
 def _clean(d: Dict[str, Any]) -> Dict[str, Any]:
     """Drop empty values to keep serialized JSON and rendered cards small."""
     return {k: v for k, v in d.items() if v not in (None, "", [], {})}
+
+
+def _coerce(cls, d: Any):
+    """Tolerant dataclass loader for model dicts coming from the LLM or disk.
+
+    The LLM (especially the OpenAI/OpenRouter json_object path, which can't
+    structurally enforce the schema) may emit a stray key or omit a required one.
+    ``cls(**d)`` would raise and discard the whole bible. Instead: ignore unknown
+    keys and fill any missing required field with a type-appropriate empty value
+    (0 for ints, "" otherwise). Non-dict entries return ``None`` (callers skip).
+    """
+    if not isinstance(d, dict):
+        return None
+    known = cls.__dataclass_fields__
+    kwargs = {k: v for k, v in d.items() if k in known}
+    for name, f in known.items():
+        if name in kwargs:
+            continue
+        if f.default is not MISSING or f.default_factory is not MISSING:
+            continue  # field has its own default
+        kwargs[name] = 0 if "int" in str(f.type) else ""
+    return cls(**kwargs)
+
+
+def _load_list(cls, raw: Any) -> list:
+    """Build a list of model instances from possibly-malformed LLM/disk data:
+    tolerate a non-list (-> empty) and drop entries that aren't dicts."""
+    if not isinstance(raw, list):
+        return []
+    return [obj for obj in (cls.from_dict(x) for x in raw) if obj is not None]
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +130,7 @@ class Character:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 @dataclass
@@ -121,7 +151,7 @@ class Location:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 @dataclass
@@ -145,7 +175,7 @@ class Item:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 @dataclass
@@ -168,7 +198,7 @@ class PlotThread:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 @dataclass
@@ -182,7 +212,7 @@ class TimelineEvent:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +254,7 @@ class ChapterPlan:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 @dataclass
@@ -246,7 +276,7 @@ class ChapterRecord:
 
     @classmethod
     def from_dict(cls, d):
-        return cls(**d)
+        return _coerce(cls, d)
 
 
 # ---------------------------------------------------------------------------
@@ -323,9 +353,9 @@ class Bible:
             logline=d.get("logline", ""),
             target_chapters=d.get("target_chapters", 12),
             act_structure=d.get("act_structure", ""),
-            characters=[Character.from_dict(x) for x in d.get("characters", [])],
-            locations=[Location.from_dict(x) for x in d.get("locations", [])],
-            items=[Item.from_dict(x) for x in d.get("items", [])],
-            threads=[PlotThread.from_dict(x) for x in d.get("threads", [])],
-            outline=[ChapterPlan.from_dict(x) for x in d.get("outline", [])],
+            characters=_load_list(Character, d.get("characters")),
+            locations=_load_list(Location, d.get("locations")),
+            items=_load_list(Item, d.get("items")),
+            threads=_load_list(PlotThread, d.get("threads")),
+            outline=_load_list(ChapterPlan, d.get("outline")),
         )

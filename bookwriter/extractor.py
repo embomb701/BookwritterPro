@@ -18,11 +18,17 @@ from .prompts import EXTRACTOR_SYSTEM, DELTA_SCHEMA
 
 def _rels_to_map(updates: List[Dict[str, Any]]) -> None:
     """Convert each character_update's relationship_updates array -> dict in place."""
+    if not isinstance(updates, list):
+        return
     for upd in updates:
+        if not isinstance(upd, dict):
+            continue
         rels = upd.get("relationship_updates")
         if isinstance(rels, list):
             upd["relationship_updates"] = {
-                r["with"]: r["relation"] for r in rels if "with" in r and "relation" in r
+                r["with"]: r["relation"]
+                for r in rels
+                if isinstance(r, dict) and "with" in r and "relation" in r
             }
 
 

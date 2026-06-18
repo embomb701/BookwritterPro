@@ -4,6 +4,8 @@
     python -m bookwriter write     --project ./mybook
     python -m bookwriter generate  --premise-file premise.txt --project ./mybook
     python -m bookwriter report    --project ./mybook
+    python -m bookwriter kdp       --project ./mybook --author-first A --author-last B
+    python -m bookwriter price     --project ./mybook --list-price 4.99
     python -m bookwriter profiles
 
 Add ``--mock`` to any generating command to run the whole pipeline offline
@@ -43,11 +45,21 @@ def _parse_only(value: Optional[str]) -> Optional[List[int]]:
     out: List[int] = []
     for part in value.split(","):
         part = part.strip()
-        if "-" in part:
-            a, b = part.split("-")
-            out.extend(range(int(a), int(b) + 1))
-        elif part:
-            out.append(int(part))
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                a, b = part.split("-", 1)
+                lo, hi = int(a), int(b)
+                if lo > hi:                 # normalize reversed ranges (3-1 -> 1-3)
+                    lo, hi = hi, lo
+                out.extend(range(lo, hi + 1))
+            else:
+                out.append(int(part))
+        except ValueError:
+            raise ValueError(
+                f"invalid --only selection {part!r}; use e.g. '1,3,5' or '2-7'"
+            )
     return out or None
 
 

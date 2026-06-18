@@ -47,18 +47,27 @@ class StateDelta:
 
     @classmethod
     def from_dict(cls, chapter: int, d: Dict[str, Any]) -> "StateDelta":
+        # Coerce off-spec model output at the boundary: the dict-list fields keep
+        # only dict entries and the string-list fields keep only strings, so
+        # apply_delta never meets a bare string where it expects an object.
+        def _dicts(v):
+            return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+        def _strs(v):
+            return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
         return cls(
             chapter=chapter,
-            synopsis_line=d.get("synopsis_line", ""),
-            timeline_summary=d.get("timeline_summary", ""),
-            time_marker=d.get("time_marker", ""),
-            character_updates=d.get("character_updates", []),
-            new_characters=d.get("new_characters", []),
-            new_locations=d.get("new_locations", []),
-            new_items=d.get("new_items", []),
-            threads_opened=d.get("threads_opened", []),
-            threads_resolved=d.get("threads_resolved", []),
-            continuity_flags=d.get("continuity_flags", []),
+            synopsis_line=d.get("synopsis_line", "") or "",
+            timeline_summary=d.get("timeline_summary", "") or "",
+            time_marker=d.get("time_marker", "") or "",
+            character_updates=_dicts(d.get("character_updates")),
+            new_characters=_dicts(d.get("new_characters")),
+            new_locations=_dicts(d.get("new_locations")),
+            new_items=_dicts(d.get("new_items")),
+            threads_opened=_dicts(d.get("threads_opened")),
+            threads_resolved=_strs(d.get("threads_resolved")),
+            continuity_flags=_strs(d.get("continuity_flags")),
         )
 
 
@@ -201,6 +210,10 @@ class StoryGraph:
         return "\n".join(f"Ch {i + 1}: {s}" for i, s in enumerate(self.synopsis))
 
     def prev_tail(self, number: int, words: int) -> str:
+        # words<=0 must mean "no tail" — toks[-0:] is the WHOLE list (slice quirk),
+        # which would silently inline the entire previous chapter (huge token cost).
+        if words <= 0:
+            return ""
         prev = self.chapters.get(number - 1)
         if not prev or not prev.text:
             return ""
@@ -214,34 +227,48 @@ class StoryGraph:
         b = self.bible
 
         for nc in delta.new_characters:
-            if "id" in nc and not b.character(nc["id"]):
+            if isinstance(nc, dict) and "id" in nc and not b.character(nc["id"]):
                 c = Character.from_dict(nc)
                 c.first_chapter = c.first_chapter or delta.chapter
                 b.characters.append(c)
         for nl in delta.new_locations:
-            if "id" in nl and not b.location(nl["id"]):
+            if isinstance(nl, dict) and "id" in nl and not b.location(nl["id"]):
                 loc = Location.from_dict(nl)
                 loc.first_chapter = loc.first_chapter or delta.chapter
                 b.locations.append(loc)
         for ni in delta.new_items:
-            if "id" in ni and not any(it.id == ni["id"] for it in b.items):
+            if isinstance(ni, dict) and "id" in ni and not any(it.id == ni["id"] for it in b.items):
                 item = Item.from_dict(ni)
                 item.first_chapter = item.first_chapter or delta.chapter
                 b.items.append(item)
 
         for upd in delta.character_updates:
+            if not isinstance(upd, dict):
+                continue
             c = b.character(upd.get("id", ""))
             if not c:
                 continue
             if upd.get("status"):
                 c.status = upd["status"]
-            for fact in upd.get("knowledge_added", []):
-                if fact not in c.knowledge:
-                    c.knowledge.append(fact)
-            for oid, rel in upd.get("relationship_updates", {}).items():
-                c.relationships[oid] = rel
+            # Guard off-spec model output: tolerate an explicit null AND a
+            # non-list/non-dict value (a bare string would otherwise be iterated
+            # char-by-char into the knowledge list).
+            knowledge_added = upd.get("knowledge_added") or []
+            if isinstance(knowledge_added, list):
+                for fact in knowledge_added:
+                    # Keep only string facts — a stray dict/number would later crash
+                    # "; ".join(c.knowledge) when the character card is rendered.
+                    if isinstance(fact, str) and fact and fact not in c.knowledge:
+                        c.knowledge.append(fact)
+            rel_updates = upd.get("relationship_updates") or {}
+            if isinstance(rel_updates, dict):
+                for oid, rel in rel_updates.items():
+                    if isinstance(oid, str) and isinstance(rel, str):
+                        c.relationships[oid] = rel
 
         for to in delta.threads_opened:
+            if not isinstance(to, dict):
+                continue
             tid = to.get("id") or _slug(to.get("name", f"thread{len(b.threads) + 1}"))
             if not any(t.id == tid for t in b.threads):
                 b.threads.append(PlotThread(
@@ -268,11 +295,15 @@ class StoryGraph:
         line = (synopsis_line or rec.synopsis_line or "").strip()
         if len(line) > settings_cap:
             line = line[: settings_cap - 1].rstrip() + "…"
-        # keep the synopsis list aligned to chapter numbers
+        rec.synopsis_line = line
+        # Synopsis is a 1-based-by-chapter list. A number < 1 (degenerate plan from
+        # a non-conforming model) would index self.synopsis[-1] and clobber the last
+        # chapter — guard it (the record itself is still stored above).
+        if rec.number < 1:
+            return
         while len(self.synopsis) < rec.number:
             self.synopsis.append("")
         self.synopsis[rec.number - 1] = line
-        rec.synopsis_line = line
 
     # ------------------------------------------------------------------
     # Serialization
@@ -285,8 +316,14 @@ class StoryGraph:
         }
 
     def load_state(self, d: Dict[str, Any]) -> None:
-        self.timeline = [TimelineEvent.from_dict(x) for x in d.get("timeline", [])]
-        self.synopsis = list(d.get("synopsis", []))
+        # Filter Nones: TimelineEvent.from_dict returns None for a non-dict entry
+        # (tolerant loader), so a malformed saved-state timeline can't smuggle a
+        # None into self.timeline and crash a later e.to_dict().
+        raw = d.get("timeline", [])
+        raw = raw if isinstance(raw, list) else []
+        self.timeline = [e for e in (TimelineEvent.from_dict(x) for x in raw) if e is not None]
+        syn = d.get("synopsis", [])
+        self.synopsis = list(syn) if isinstance(syn, list) else []
 
 
 def _slug(name: str) -> str:
