@@ -16,7 +16,10 @@
 /* ----------------------------- TOKENS ----------------------------------- */
 :root {
   /* Type */
-  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  /* Minimal mono: Inter everywhere (display = Inter, tight tracking). The
+     legacy .serif/.display classes resolve through --font-display, so pointing
+     it at Inter re-skins every heading with no markup changes. */
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-text: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "Spline Sans Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
@@ -35,45 +38,45 @@
   --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
   --s-5: 1.5rem; --s-6: 2rem; --s-7: 3rem; --s-8: 4rem; --s-9: 6rem;
 
-  --radius-sm: 8px;
-  --radius: 14px;
-  --radius-lg: 22px;
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 16px;
 
-  /* Light theme — warm paper & ink */
-  --paper: #f6f1e7;
-  --paper-2: #fbf7ef;
-  --surface: #fffdf8;
-  --surface-2: #f0e8d8;
-  --ink: #2a2420;
-  --ink-soft: #5b5048;
-  --ink-faint: #8c8074;
-  --line: #e4dac6;
-  --line-strong: #d6c8ad;
+  /* Light theme — minimal neutral greys, one restrained accent */
+  --paper: #fafafb;
+  --paper-2: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f1f2f4;
+  --ink: #111317;
+  --ink-soft: #595f6b;
+  --ink-faint: #8b909b;
+  --line: #e7e8ec;
+  --line-strong: #d6d8de;
 
-  --accent: #c0392b;          /* ember red */
-  --accent-strong: #9e2b1f;
-  --accent-soft: #f3d9d3;
+  --accent: #2563eb;          /* the single accent — used sparingly */
+  --accent-strong: #1d4ed8;
+  --accent-soft: #e8eefe;
   --accent-ink: #fff;
   /* Light text that sits on a saturated/mid-tone fill (avatars, chips, badges,
-     graph initials). Constant near-white reads well over the warm mid-tones in
-     both themes; routed through a token so it's never a raw literal. */
-  --on-fill: #fdf6ec;
+     graph initials). Routed through a token so it's never a raw literal. */
+  --on-fill: #ffffff;
   /* Off-state of the demo-mode switch thumb. */
-  --switch-off: #fbf6ec;
-  /* Cover-fallback companion (was a hard-coded #2a1410). */
-  --fallback-2: #2a1410;
-  /* Antagonist graph node: a desaturated cool slate-ink, distinctly the
-     heaviest/darkest disc in light. */
-  --node-ant: #36404e;
+  --switch-off: #ffffff;
+  /* Cover-fallback companion. */
+  --fallback-2: #1a1d24;
+  /* Antagonist graph node: the heaviest/darkest disc in light. */
+  --node-ant: #2f3540;
 
-  --gold: #b08b2e;
-  --good: #3e7d54;
-  --warn: #b5781f;
-  --bad: #b23a30;
+  /* Secondary/decorative "foil" hue. In minimal mono this is a neutral slate
+     (NOT a second color) so gradients/foil read as quiet tonal detail. */
+  --gold: #9aa0ad;
+  --good: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
 
-  --shadow-sm: 0 1px 2px rgba(60,44,24,.06), 0 1px 3px rgba(60,44,24,.05);
-  --shadow: 0 4px 16px rgba(60,44,24,.08), 0 1px 4px rgba(60,44,24,.06);
-  --shadow-lg: 0 18px 48px rgba(50,36,20,.16), 0 4px 14px rgba(50,36,20,.10);
+  --shadow-sm: 0 1px 2px rgba(17,19,23,.04);
+  --shadow: 0 1px 3px rgba(17,19,23,.06), 0 4px 12px rgba(17,19,23,.05);
+  --shadow-lg: 0 8px 28px rgba(17,19,23,.10), 0 2px 8px rgba(17,19,23,.06);
 
   --maxw: 1280px;
   /* Cohesive motion system: one primary easing, one playful spring, two durs. */
@@ -84,40 +87,35 @@
 }
 
 :root[data-theme="dark"] {
-  --paper: #15110e;
-  --paper-2: #1a1512;
-  --surface: #211b16;
-  --surface-2: #2b231c;
-  --ink: #f1e8da;
-  --ink-soft: #c3b6a3;
-  --ink-faint: #8b7e6c;
-  --line: #34291f;
-  --line-strong: #463726;
+  --paper: #0f1115;
+  --paper-2: #14161b;
+  --surface: #181b21;
+  --surface-2: #20242c;
+  --ink: #e9ebf0;
+  --ink-soft: #9aa1ad;
+  --ink-faint: #6b7280;
+  --line: #262a32;
+  --line-strong: #353b45;
 
-  --accent: #e8624e;
-  --accent-strong: #f4795f;
-  --accent-soft: #3a201a;
-  --accent-ink: #1a100c;
+  --accent: #3b82f6;
+  --accent-strong: #60a5fa;
+  --accent-soft: #16233d;
+  --accent-ink: #0b0d12;
 
-  --gold: #d8b25a;
-  /* A brighter gold for the writing-state chapter numeral so dark-on-gold text
-     keeps contrast (the writing chip uses --accent-ink for the numeral). */
-  --good: #6cc090;
-  --warn: #e0a64a;
-  --bad: #ef6c5b;
+  /* Neutral slate "foil" in dark — quiet, never a second color. */
+  --gold: #7b828f;
+  --good: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
 
-  --on-fill: #fdf6ec;
-  /* In dark, the switch off-track is --line-strong (#463726); a warm off-white
-     thumb keeps the off-state legible without a foreign pure-white pill. */
-  --switch-off: #cdbfa8;
-  --fallback-2: #1a0c0a;
-  /* In dark, a cool slate that is clearly heavier than the gold support node and
-     never the brightest disc (the old --ink was near-paper -> wrong villain). */
-  --node-ant: #6f7f96;
+  --on-fill: #ffffff;
+  --switch-off: #cfd3da;
+  --fallback-2: #0b0d12;
+  --node-ant: #6b7488;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
-  --shadow: 0 6px 22px rgba(0,0,0,.5);
-  --shadow-lg: 0 22px 60px rgba(0,0,0,.62);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.5);
+  --shadow: 0 2px 8px rgba(0,0,0,.55);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.6);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -134,10 +132,6 @@ body {
   line-height: 1.6;
   color: var(--ink);
   background: var(--paper);
-  background-image:
-    radial-gradient(1200px 700px at 85% -8%, var(--accent-soft) 0%, transparent 55%),
-    radial-gradient(900px 600px at -5% 110%, color-mix(in srgb, var(--gold) 16%, transparent) 0%, transparent 50%);
-  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100vh;
@@ -154,7 +148,7 @@ h1, h2, h3, h4 { line-height: 1.12; font-weight: 600; }
   font-family: var(--font-display);
   font-weight: 600;
   font-size: clamp(2rem, 1.2rem + 3vw, var(--t-4xl));
-  letter-spacing: -0.02em;
+  letter-spacing: -0.035em;
   font-optical-sizing: auto;
 }
 .eyebrow {
@@ -931,8 +925,8 @@ input:invalid:not(:placeholder-shown) { border-color: var(--bad); box-shadow: 0 
 
 .studio-progress { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-5); }
 .progress-track { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--line); }
-.progress-fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--accent)); transition: width .7s var(--ease); position: relative; }
-.progress-fill.is-complete { background: linear-gradient(90deg, var(--good), var(--gold), var(--accent)); background-size: 200% 100%; animation: progGlow 2.4s var(--ease) infinite; }
+.progress-fill { height: 100%; width: 0; border-radius: 999px; background: var(--accent); transition: width .7s var(--ease); position: relative; }
+.progress-fill.is-complete { background: linear-gradient(90deg, var(--good), color-mix(in srgb, var(--good) 60%, var(--accent))); background-size: 200% 100%; animation: progGlow 2.4s var(--ease) infinite; }
 @keyframes progGlow { 0%,100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
 .progress-label { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
@@ -958,20 +952,20 @@ input:invalid:not(:placeholder-shown) { border-color: var(--bad); box-shadow: 0 
   font-size: var(--t-xs); font-weight: 700; font-variant-numeric: tabular-nums;
   background: var(--surface-2); color: var(--ink-faint); border: 1px solid var(--line); }
 .chapter-item.is-written .ci-num { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-/* Dark numeral on the gold writing-state chip: gold is a mid-tone in both
-   themes, so a near-black numeral keeps contrast (white was low-contrast in dark). */
-.chapter-item.is-writing .ci-num { background: var(--gold); color: #2a1d05; border-color: var(--gold); animation: pulse 1.4s var(--ease) infinite; }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 55%, transparent);} 50% { box-shadow: 0 0 0 6px transparent; } }
+/* Writing-state chip: the single accent, pulsing. Distinguished from the static
+   solid-accent "written" disc by the pulse + the breathing outline row below. */
+.chapter-item.is-writing .ci-num { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); animation: pulse 1.4s var(--ease) infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);} 50% { box-shadow: 0 0 0 6px transparent; } }
 /* The actively-writing outline row gently breathes (tinted wash + soft ring) so
    the live chapter is unmistakable in the outline even in a still frame. */
 .chapter-item.is-writing {
-  background: color-mix(in srgb, var(--gold) 12%, var(--surface));
-  border-color: color-mix(in srgb, var(--gold) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
   animation: rowBreathe 2.2s var(--ease) infinite;
 }
 @keyframes rowBreathe {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent), 0 2px 12px -4px color-mix(in srgb, var(--gold) 55%, transparent); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent), 0 2px 12px -4px color-mix(in srgb, var(--accent) 45%, transparent); }
 }
 .ci-main { min-width: 0; }
 .ci-title { font-size: var(--t-sm); font-weight: 600; line-height: 1.3; }
@@ -1554,15 +1548,11 @@ a:focus-visible, button:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .chapter-list::-webkit-scrollbar-thumb, .reader-body::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; }
 
 /* ----------------------------- GRAIN OVERLAY ---------------------------- */
-/* A faint, fixed, full-page paper grain. Pure decoration; never interactive.
-   Uses an inline SVG fractal-noise data URI so it works fully offline. */
-.grain-overlay {
-  position: fixed; inset: 0; z-index: 1; pointer-events: none;
-  opacity: .035; mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-:root[data-theme="dark"] .grain-overlay { opacity: .05; mix-blend-mode: screen; }
-/* keep the grain behind content but above the page background */
+/* The paper-grain texture is intentionally disabled in the minimal-mono skin —
+   a flat neutral canvas is the point. Element kept in the DOM as a harmless
+   no-op so no markup/JS changes are needed. */
+.grain-overlay { display: none; }
+/* keep content layering above the page background */
 .topbar, .app, .toast-region { position: relative; z-index: 2; }
 
 /* ----------------------------- FLOURISH --------------------------------- */
