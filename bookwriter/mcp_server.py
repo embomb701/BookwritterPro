@@ -38,7 +38,18 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEFAULT_DATA_DIR = os.path.join(_PKG_ROOT, ".bookwriter_data")
+
+
+def _default_data_root() -> str:
+    """Repo-root ``.bookwriter_data`` in a source checkout, else a user-writable
+    ``~/.bookwriter_data``. Deriving it from the install dir would put books in
+    site-packages (read-only / wiped on upgrade) for a pip-installed wheel."""
+    if os.path.isfile(os.path.join(_PKG_ROOT, "pyproject.toml")):
+        return os.path.join(_PKG_ROOT, ".bookwriter_data")
+    return os.path.join(os.path.expanduser("~"), ".bookwriter_data")
+
+
+_DEFAULT_DATA_DIR = _default_data_root()
 
 
 def data_root() -> str:
@@ -70,11 +81,14 @@ def _validate_book_id(book_id: str) -> str:
 
 
 def make_book_id(title: str, *, exists=None) -> str:
-    """Slug of the title + 6-char hash (matches the HTTP contract).
+    """Slug of the title + 6-char hash, in the same ``slug-hash`` shape the HTTP
+    service uses (only ever hit on the rare HTTP-import-fail fallback path).
 
     ``exists`` is an optional predicate ``(book_id) -> bool``; when supplied we
     re-seed the hash on collision so two books with the same title don't clobber
-    each other's meta.json (the HTTP service does the same with a time seed).
+    each other's meta.json. (This local minter is deterministic — sha1 + a counter
+    seed — whereas the HTTP service uses sha256 + a time seed; ids are not
+    byte-identical across the two, only the same shape.)
     """
     base = _slug(title)
     h = hashlib.sha1((title or "").encode("utf-8")).hexdigest()[:6]
@@ -383,10 +397,9 @@ class _LocalBookService:
             return json.load(f)
 
     def _write_meta(self, meta: Dict[str, Any]) -> None:
-        d = self._book_dir(meta["id"])
-        os.makedirs(d, exist_ok=True)
-        with open(self._meta_path(meta["id"]), "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2, ensure_ascii=False)
+        from bookwriter.store import _write_json
+        os.makedirs(self._book_dir(meta["id"]), exist_ok=True)
+        _write_json(self._meta_path(meta["id"]), meta)  # atomic, matches HTTP service
 
     # ---- core wiring --------------------------------------------------
     def _settings(self, book_id: str, meta: Dict[str, Any]) -> Any:
@@ -399,12 +412,35 @@ class _LocalBookService:
             s.use_cache = bool(meta["use_cache"])
         if "run_continuity_check" in meta:
             s.run_continuity_check = bool(meta["run_continuity_check"])
+        s.chapter_images = bool(meta.get("chapter_images", False))
         return s
 
-    def _make_llm(self, mock: bool) -> Any:
+    @staticmethod
+    def _make_image_provider(meta: Dict[str, Any]):
+        """Image backend for the write job (parity with the HTTP service), or None
+        if this book didn't opt in or no provider is configured."""
+        if not meta.get("chapter_images"):
+            return None
+        from bookwriter.images import image_available, make_image_provider
+        if not image_available():
+            return None
+        try:
+            return make_image_provider()
+        except Exception:
+            return None
+
+    def _make_llm(self, mock: bool, meta: Optional[Dict[str, Any]] = None) -> Any:
         from bookwriter.provider import make_llm
 
-        return make_llm(mock=mock)
+        meta = meta or {}
+        # Honor the book's per-book provider/model (persisted in meta.json by the
+        # HTTP service) so a book written via MCP uses the same backend it would
+        # via HTTP — not just the env default.
+        return make_llm(
+            mock=mock,
+            provider=(meta.get("provider") or None),
+            model=(meta.get("model") or None),
+        )
 
     def _store(self, book_id: str) -> Any:
         from bookwriter.store import BookStore
@@ -491,6 +527,9 @@ class _LocalBookService:
             "mock": bool(mock),
             "genre": genre,
             "logline": "",
+            "provider": "",   # parity with the HTTP service meta shape
+            "model": "",
+            "chapter_images": False,
             "use_cache": bool(use_cache),
             "run_continuity_check": bool(run_continuity_check),
         }
@@ -499,7 +538,7 @@ class _LocalBookService:
         from bookwriter.pipeline import BookPipeline
 
         settings = self._settings(book_id, meta)
-        llm = self._make_llm(mock)
+        llm = self._make_llm(mock, meta)
         pipe = BookPipeline(llm, settings)
         bible = pipe.plan(
             premise=premise,
@@ -526,7 +565,7 @@ class _LocalBookService:
         from bookwriter.pipeline import BookPipeline
 
         settings = self._settings(book_id, meta)
-        llm = self._make_llm(bool(meta.get("mock", False)))
+        llm = self._make_llm(bool(meta.get("mock", False)), meta)
 
         flags: List[str] = []
 
@@ -539,7 +578,8 @@ class _LocalBookService:
         # stream_prose only when someone is listening (broker viewers); the
         # extra delta events are wasted work for a pure local call.
         pipe = BookPipeline(
-            llm, settings, on_event=_on_event, stream_prose=on_event is not None
+            llm, settings, on_event=_on_event, stream_prose=on_event is not None,
+            image_provider=self._make_image_provider(meta),
         )
         if not pipe.load():
             raise BookNotFound(f"{book_id} has no plan; create_book first")
@@ -572,6 +612,7 @@ class _LocalBookService:
                     "act": p.act,
                     "written": store.has_chapter(p.number),
                     "word_count": rec.word_count if rec else 0,
+                    "has_image": store.has_image(p.number),  # parity with HTTP get_book
                 })
         return {
             "book": self._summary(meta),
@@ -596,7 +637,11 @@ class _LocalBookService:
         if graph is None:
             raise BookNotFound(f"{book_id} has no plan")
         plan = graph.bible.plan(number)
+        if plan is None:
+            # Match the HTTP 404 for an out-of-outline chapter number.
+            raise BookNotFound(f"{book_id} chapter {number} not in outline")
         rec = graph.chapters.get(number)
+        has_image = store.has_image(number)
         return {
             "number": number,
             "title": (rec.title if rec else (plan.title if plan else "")),
@@ -605,6 +650,8 @@ class _LocalBookService:
             "synopsis_line": rec.synopsis_line if rec else "",
             "fingerprint": rec.fingerprint if rec else "",
             "written": store.has_chapter(number),
+            "has_image": has_image,  # parity with HTTP get_chapter
+            "image_url": f"/api/books/{book_id}/chapters/{number}/image" if has_image else "",
             "plan": plan.to_dict() if plan else None,
         }
 
@@ -653,7 +700,9 @@ class _LocalBookService:
         self._read_meta(book_id)
         graph = self._store(book_id).load_graph()
         if graph is None:
-            return {"markdown": "", "words": 0}
+            # Match the HTTP 404 and the sibling local reads (get_chapter/get_graph)
+            # so "no plan yet" is distinguishable from "empty book".
+            raise BookNotFound(f"{book_id} has no plan")
         md = self._store(book_id).assemble_manuscript(graph)
         return {"markdown": md, "words": len(md.split())}
 
@@ -675,14 +724,18 @@ class _LocalBookService:
             generate_kdp_metadata, build_kdp_kit, _listing_text,
         )
         from bookwriter.costs import CostLedger
+        from bookwriter.store import _write_json
 
         meta = self._read_meta(book_id)
         graph = self._store(book_id).load_graph()
         if graph is None:
             raise BookNotFound(f"{book_id} has no plan; create_book first")
+        if not graph.chapters:
+            # Parity with HTTP (service.py 404): don't build an empty EPUB.
+            raise BookNotFound(f"{book_id} has no written chapters; write_book first")
 
         settings = self._settings(book_id, meta)
-        llm = self._make_llm(bool(meta.get("mock", False)))
+        llm = self._make_llm(bool(meta.get("mock", False)), meta)
         ledger = CostLedger()
 
         kdp_meta = generate_kdp_metadata(
@@ -695,7 +748,13 @@ class _LocalBookService:
             edition=edition,
             contributors=contributors,
         )
-        kit = build_kdp_kit(graph, kdp_meta, self._kdp_dir(book_id))
+        # Include any generated chapter images (parity with the HTTP path).
+        images = self._store(book_id).collect_images(
+            [p.number for p in graph.bible.outline])
+        kit = build_kdp_kit(graph, kdp_meta, self._kdp_dir(book_id), images=images)
+        # Persist <book>/kdp.json so the HTTP readers (get_kdp / epub_path /
+        # interior) find MCP-prepared metadata — shared filesystem state.
+        _write_json(os.path.join(self._book_dir(book_id), "kdp.json"), kit["metadata"])
         return {
             "metadata": kit["metadata"],
             "listing": _listing_text(kdp_meta),
@@ -740,7 +799,7 @@ class _LocalBookService:
 
         meta = self._read_meta(book_id)
         settings = self._settings(book_id, meta)
-        llm = self._make_llm(bool(meta.get("mock", False)))
+        llm = self._make_llm(bool(meta.get("mock", False)), meta)
         return generate_kdp_metadata(
             llm, settings, CostLedger(), graph,
             author_first="", author_last="",
@@ -802,7 +861,7 @@ class _LocalBookService:
         graph = self._load_graph_or_404(book_id)
         kdp_meta = self._kdp_metadata(book_id, graph)
         settings = self._settings(book_id, meta)
-        llm = self._make_llm(bool(meta.get("mock", False)))
+        llm = self._make_llm(bool(meta.get("mock", False)), meta)
         marketing = _generate_marketing(
             llm, settings, CostLedger(), graph, kdp_meta
         )
