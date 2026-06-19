@@ -202,6 +202,21 @@
       </fieldset>
 
       <fieldset class="kdp-group">
+        <legend>Back cover &amp; author</legend>
+        <div class="field">
+          <label for="kdp-back-blurb">Back-cover blurb <span class="opt">printed on the paperback back</span></label>
+          <textarea id="kdp-back-blurb" name="back_cover_blurb" rows="4"
+            placeholder="A shorter, punchy hook for the physical back cover (plain text)."></textarea>
+        </div>
+        <div class="field">
+          <label for="kdp-author-bio">Author bio <span class="opt">back cover / Author Central</span></label>
+          <textarea id="kdp-author-bio" name="author_bio" rows="3"
+            placeholder="A short third-person author bio."></textarea>
+        </div>
+        <p class="field-hint">Both are filled by <strong>Auto-fill with AI</strong> and used to render the generated back cover.</p>
+      </fieldset>
+
+      <fieldset class="kdp-group">
         <legend>Rights &amp; audience</legend>
         <div class="field">
           <span class="kdp-label">Publishing rights</span>
@@ -283,6 +298,16 @@
       <div class="kdp-cover-card">
         <div class="kdp-cover" id="kdp-cover" data-cover aria-hidden="true"></div>
         <p class="kdp-cover-cap">Your KDP-ready cover · ${COVER_W}×${COVER_H}</p>
+        <button class="btn btn-primary kdp-action" id="kdp-gen-cover" type="button">
+          <span class="btn-label">✨ Generate AI cover</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+        <p class="field-hint" id="kdp-gen-cover-note">Paints a catchy cover from your story via the image backend (Pixio), with your title &amp; author typeset on top.</p>
+      </div>
+
+      <div class="kdp-cover-card" id="kdp-back-card" hidden>
+        <div class="kdp-cover" id="kdp-back-cover" aria-hidden="true"></div>
+        <p class="kdp-cover-cap">Generated back cover</p>
       </div>
 
       <div class="kdp-kit-card">
@@ -315,6 +340,25 @@
           <a class="btn btn-ghost kdp-action" id="kdp-open" href="${KDP_NEW_TITLE_URL}" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9M11 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Open Amazon KDP
+          </a>
+
+          <h2 class="rail-title kdp-pdf-title">Download as PDF</h2>
+          <p class="field-hint" id="kdp-pdf-note">For your own use — the full book, or each part on its own.</p>
+          <a class="btn btn-primary kdp-action" id="kdp-pdf-full" href="/api/books/__ID__/export/pdf?part=full" download>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Full book (cover + interior + back)
+          </a>
+          <a class="btn btn-ghost kdp-action" id="kdp-pdf-interior" href="/api/books/__ID__/export/pdf?part=interior" download>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M5 4h11l3 3v13H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            Interior only (no cover)
+          </a>
+          <a class="btn btn-ghost kdp-action" id="kdp-pdf-front" href="/api/books/__ID__/export/pdf?part=front-cover" download>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            Front cover
+          </a>
+          <a class="btn btn-ghost kdp-action" id="kdp-pdf-back" href="/api/books/__ID__/export/pdf?part=back-cover" download>
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            Back cover
           </a>
         </section>
 
@@ -569,23 +613,48 @@
     $("#kdp-author-last", view).value = an.last;
     paintCover($("#kdp-cover", view), meta);
 
-    // If a listing was generated before, hydrate the editable fields with it.
+    // If a listing was generated before, hydrate the editable fields with it
+    // and surface the generated back cover.
     try {
       const prev = await API.kdp(id);
-      if (prev && prev.metadata) applyMetadata(prev.metadata);
+      if (prev && prev.metadata) { applyMetadata(prev.metadata); refreshBackCover(); }
     } catch { /* none yet — fine */ }
 
+    // The most recently generated AI cover SVG (preferred over the procedural
+    // cover when prepping the kit / EPUB).
+    let aiCoverSvg = "";
+
     // -------- apply server metadata -> form fields (shared by GET + autofill)
+    // Fills EVERY AI-fillable field (identity fields like author stay user-set).
     function applyMetadata(m) {
       if (!m) return;
+      const setIf = (sel, val) => { if (val != null && val !== "") $(sel, view).value = String(val); };
       if (m.subtitle != null && !$("#kdp-subtitle", view).value) $("#kdp-subtitle", view).value = m.subtitle;
+      setIf("#kdp-series", m.series);
+      setIf("#kdp-series-part", m.series_part);
+      setIf("#kdp-edition", m.edition);
       if (m.description != null) { desc.value = m.description; updateDesc(); }
+      setIf("#kdp-back-blurb", m.back_cover_blurb);
+      setIf("#kdp-author-bio", m.author_bio);
       if (Array.isArray(m.keywords)) keywords.set(m.keywords);
       if (Array.isArray(m.categories)) cats.set(m.categories);
       // Server metadata (KdpMetadata.to_dict = asdict) carries FLAT
       // reading_age_min / reading_age_max — not a nested reading_age object.
       if (m.reading_age_min != null && m.reading_age_min !== "") ageMin.value = String(m.reading_age_min);
       if (m.reading_age_max != null && m.reading_age_max !== "") ageMax.value = String(m.reading_age_max);
+    }
+
+    // Paint an SVG string straight into a cover element (AI cover / back cover).
+    function setCoverSvg(el, svg) { if (el) el.innerHTML = svg || ""; }
+
+    // (Re)load the generated back-cover preview from the server.
+    async function refreshBackCover() {
+      try {
+        const r = await fetch(`/api/books/${id}/export/back-cover`);
+        if (!r.ok) return;
+        setCoverSvg($("#kdp-back-cover", view), await r.text());
+        $("#kdp-back-card", view).hidden = false;
+      } catch { /* ignore */ }
     }
 
     // ---------------------------------------------------- Auto-fill with AI
@@ -599,11 +668,12 @@
         const payload = {
           author_first: $("#kdp-author-first", view).value.trim() || undefined,
           author_last: $("#kdp-author-last", view).value.trim() || undefined,
-          cover_svg: coverSvgFor(meta) || undefined,
+          cover_svg: aiCoverSvg || coverSvgFor(meta) || undefined,
         };
         const res = await API.kdpGenerate(id, payload);
         applyMetadata((res && res.metadata) || res);
-        note.textContent = "Description, keywords and categories filled in. Review, then copy into KDP.";
+        refreshBackCover();
+        note.textContent = "Every field filled — description, blurb, bio, keywords, categories. Review, then copy into KDP.";
         toast("Listing generated.", { title: "Auto-filled", type: "good" });
       } catch (err) {
         note.textContent = err.message || "Auto-fill failed.";
@@ -614,6 +684,39 @@
         $(".btn-label", autofillBtn).textContent = "✨ Auto-fill with AI";
       }
     });
+
+    // -------------------------------------------------- Generate AI cover
+    const genCoverBtn = $("#kdp-gen-cover", view);
+    genCoverBtn.addEventListener("click", async () => {
+      genCoverBtn.classList.add("is-busy"); genCoverBtn.disabled = true;
+      $(".btn-label", genCoverBtn).textContent = "Painting…";
+      try {
+        const res = await API.generateCover(id, {
+          title: $("#kdp-title", view).value.trim() || undefined,
+          subtitle: $("#kdp-subtitle", view).value.trim() || undefined,
+          author_first: $("#kdp-author-first", view).value.trim() || undefined,
+          author_last: $("#kdp-author-last", view).value.trim() || undefined,
+        });
+        if (res && res.cover_svg) {
+          aiCoverSvg = res.cover_svg;
+          setCoverSvg($("#kdp-cover", view), aiCoverSvg);
+          refreshBackCover();
+          toast("AI cover generated.", { title: "Cover", type: "good" });
+        }
+      } catch (err) {
+        toast(err.message || "Cover generation failed.", { title: "Couldn't generate cover", type: "error" });
+      } finally {
+        genCoverBtn.classList.remove("is-busy"); genCoverBtn.disabled = false;
+        $(".btn-label", genCoverBtn).textContent = "✨ Generate AI cover";
+      }
+    });
+
+    // -------------------------------------------------- PDF download links
+    for (const [sel, part] of [["#kdp-pdf-full", "full"], ["#kdp-pdf-interior", "interior"],
+                               ["#kdp-pdf-front", "front-cover"], ["#kdp-pdf-back", "back-cover"]]) {
+      const el = $(sel, view);
+      if (el) el.setAttribute("href", `/api/books/${id}/export/pdf?part=${part}`);
+    }
 
     // ------------------------------------------------- Download cover (PNG)
     $("#kdp-cover-dl", view).addEventListener("click", () => downloadCoverPng(meta, view));

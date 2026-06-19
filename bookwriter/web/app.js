@@ -51,6 +51,8 @@ const API = {
   // direct hrefs / client-side canvas, not these JSON helpers.
   kdpGenerate: (id, payload) => API._json("POST", `/books/${id}/kdp`, payload || {}),
   kdp: (id) => API._json("GET", `/books/${id}/kdp`),
+  // Generate a catchy AI cover (artwork + typography) via the image backend.
+  generateCover: (id, payload) => API._json("POST", `/books/${id}/cover/generate`, payload || {}),
 };
 
 /* ------------------------------- helpers -------------------------------- */
