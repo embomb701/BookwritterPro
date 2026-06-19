@@ -11,7 +11,7 @@ A local‑first book‑generation studio with a sleek, modern UI, an HTTP API, a
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-144%20passing-2ea44f)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-![MCP](https://img.shields.io/badge/MCP-17%20tools-7c3aed)
+![MCP](https://img.shields.io/badge/MCP-20%20tools-7c3aed)
 ![KDP](https://img.shields.io/badge/Amazon%20KDP-fast%20publish-FF9900?logo=amazon&logoColor=white)
 ![Build](https://img.shields.io/badge/build-none%20%C2%B7%20vanilla%20JS-orange)
 ![Design panel](https://img.shields.io/badge/design%20panel-9%2F10-e8624e)
@@ -52,7 +52,7 @@ Most "AI writer" apps give you a chat box and a wall of text. BookwriterPro give
 - 🎨 **Illustrated chapters.** Flip one toggle and every chapter gets its own art, generated from the story bible — **defaulting to Pixio**, or any image API you like. Images land inline in the reader *and* embed straight into the EPUB.
 - ⌨️ **⌘K everything.** A Linear/Raycast‑class command palette to jump anywhere.
 - 🌗 **Gorgeous in light *and* dark.** A sleek, minimal design — neutral surfaces, one confident accent, crisp type — with a true dark theme, not a lazy invert. Fully responsive down to mobile.
-- 🤖 **An agent can drive the whole thing** — write *and* publish — via 17 MCP tools or a clean HTTP/OpenAPI API.
+- 🤖 **An agent can drive the whole thing** — write *and* publish — via 20 MCP tools or a clean HTTP/OpenAPI API.
 
 > A panel of independent design critics scored the rendered UI a **9/10 — "a polished, premium, shipped product."**
 
@@ -146,9 +146,9 @@ pip install -e ".[mcp]"
 python -m bookwriter.mcp_server     # stdio MCP server
 ```
 
-**17 tools**, all sharing the same data store as the web app (a book an agent creates shows up in the UI, and vice‑versa):
+**20 tools**, all sharing the same data store as the web app (a book an agent creates shows up in the UI, and vice‑versa):
 
-`list_profiles` · `list_books` · `create_book` · `write_book` · `write_chapter` · `get_status` · `get_chapter` · `get_graph` · `get_cost` · `get_manuscript` · `prepare_kdp` · `export_epub` · `export_docx` · `print_spec` · `estimate_royalties` · `generate_marketing` · `get_kdp_listing`
+`list_profiles` · `list_books` · `create_book` · `write_book` · `write_chapter` · `get_status` · `get_chapter` · `get_graph` · `get_cost` · `get_manuscript` · `prepare_kdp` · `export_epub` · `export_docx` · `print_spec` · `estimate_royalties` · `generate_marketing` · `get_kdp_listing` · `generate_cover` · `generate_back_cover` · `export_pdf`
 
 Claude Desktop config and details: **[`docs/MCP.md`](docs/MCP.md)**.
 
@@ -185,7 +185,9 @@ Generation is **resumable** — it saves after every chapter, so an interrupted 
 
 Go from finished manuscript to a **ready-to-upload KDP listing in minutes.** Hit **Publish to KDP** in the studio and BookwriterPro builds the whole kit — **eBook *and* paperback**:
 
-- **✨ Auto-fill every KDP page‑1 field with AI** — a ≤4000‑char marketing description, up to **7 keyword‑rules‑compliant keywords**, up to **3 categories**, subtitle, series/edition — all editable, with live counters and inline validation.
+- **✨ Auto-fill EVERY field with AI** — description, **back‑cover blurb**, **author bio**, up to **7 keyword‑rules‑compliant keywords**, up to **3 categories**, subtitle, series/series‑part/edition, reading age — all from the book, all editable, with live counters and inline validation.
+- **🖼️ Generate a catchy AI cover** — one click paints art‑directed cover artwork from your story via the image backend (**Pixio** by default), with your title & author typeset on top — and a **matching back cover** (blurb + author bio + imprint) is generated too.
+- **📄 Download the book as a PDF** — four exports for the author: **full book** (cover + interior + back cover), **interior only** (no cover), **front cover**, and **back cover**. *(Needs the optional `[pdf]` extra: `pip install -e ".[pdf]"`.)*
 - **📗 eBook** — a valid **EPUB** (pure‑stdlib builder: proper `mimetype`, nav/TOC, embedded cover; uploads straight to KDP) and a **KDP‑ready cover** exported to a high‑res PNG (~2560px) right in the browser.
 - **📕 Paperback** — a print‑ready **6×9 DOCX interior** plus a computed **print spec** (estimated page count, spine width, full‑wrap cover dimensions) and a print‑cover SVG to start from.
 - **💵 Pricing & royalties** — type a list price and see estimated **eBook (70%/35%)** and **paperback** royalties per sale (printing cost included) for your marketplace.
@@ -294,7 +296,7 @@ bookwriter/
   mock.py        offline MockLLM (demo mode + tests)
   server/        FastAPI app, service layer, SSE event broker
   serve.py       `python -m bookwriter.serve`
-  mcp_server.py  MCP stdio server (17 tools)
+  mcp_server.py  MCP stdio server (20 tools)
   web/           the studio UI (index.html, styles.css, app.js, covers.js, palette.js, kdp.js)
 docs/            ARCHITECTURE.md · MCP.md · screenshots/
 tests/           144 offline tests

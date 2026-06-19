@@ -321,6 +321,56 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(r.json().get("status"), "deleted")
         self.assertEqual(self.client.get(f"/api/books/{book_id}").status_code, 404)
 
+    def test_autofill_returns_all_fields(self):
+        book_id = self._create_book()["book"]["id"]
+        self._drive_write_to_completion(book_id)
+        md = self.client.post(f"/api/books/{book_id}/kdp",
+                              json={"author_first": "Vera", "author_last": "Solenne"}).json()["metadata"]
+        for k in ("description", "keywords", "categories", "back_cover_blurb",
+                  "author_bio", "edition", "series_part"):
+            self.assertIn(k, md)
+        self.assertTrue(md["back_cover_blurb"])
+
+    def test_pdf_exports(self):
+        from bookwriter import pdf as _pdf
+        book_id = self._create_book()["book"]["id"]
+        self._drive_write_to_completion(book_id)
+        for part in ("interior", "front-cover", "back-cover", "full"):
+            r = self.client.get(f"/api/books/{book_id}/export/pdf", params={"part": part})
+            if not _pdf.pdf_available():
+                self.assertEqual(r.status_code, 501)
+                continue
+            self.assertEqual(r.status_code, 200, part)
+            self.assertEqual(r.content[:5], b"%PDF-", part)
+        # unknown part -> 400
+        self.assertEqual(
+            self.client.get(f"/api/books/{book_id}/export/pdf", params={"part": "nope"}).status_code,
+            400 if _pdf.pdf_available() else 501)
+
+    def test_back_cover_svg(self):
+        book_id = self._create_book()["book"]["id"]
+        self._drive_write_to_completion(book_id)
+        r = self.client.get(f"/api/books/{book_id}/export/back-cover")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("image/svg+xml", r.headers.get("content-type", ""))
+        self.assertIn("<svg", r.text)
+
+    def test_generate_cover_requires_image_backend(self):
+        # With no image backend configured -> a clear 400, not a 500/network call.
+        book_id = self._create_book()["book"]["id"]
+        self._drive_write_to_completion(book_id)
+        saved = {k: os.environ.pop(k, None) for k in ("PIXIO_API_KEY", "OPENAI_API_KEY",
+                                                      "BOOKWRITER_IMAGE_URL")}
+        os.environ["BOOKWRITER_IMAGE_PROVIDER"] = "pixio"
+        try:
+            r = self.client.post(f"/api/books/{book_id}/cover/generate", json={})
+            self.assertEqual(r.status_code, 400, r.text)
+        finally:
+            os.environ.pop("BOOKWRITER_IMAGE_PROVIDER", None)
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@ in the web app, and vice versa.
 
 ## What it does
 
-The server exposes seventeen tools. Every tool returns plain JSON. Use `mock=True`
+The server exposes twenty tools. Every tool returns plain JSON. Use `mock=True`
 to run **fully offline with no API key** (deterministic placeholder prose) —
 ideal for trying the tools before spending tokens.
 
@@ -32,6 +32,9 @@ ideal for trying the tools before spending tokens.
 | `estimate_royalties(book_id, list_price, marketplace="US", paper="white")` | Estimated eBook + paperback royalties per sale. |
 | `generate_marketing(book_id)` | Back-cover blurbs, A+ modules, author bio, taglines (mock mode inherited from the book). |
 | `get_kdp_listing(book_id)` | The copy-paste KDP listing text for an already-prepared kit. |
+| `generate_cover(book_id, title="", subtitle="", author_first="", author_last="")` | Generate a catchy AI cover (artwork via the image backend + title/author typography). |
+| `generate_back_cover(book_id)` | Render the back cover (blurb + author bio + imprint + barcode area). |
+| `export_pdf(book_id, part="full")` | Export a PDF — `interior`, `front-cover`, `back-cover`, or `full` (needs the `[pdf]` extra). |
 
 A typical agent flow:
 
