@@ -355,6 +355,41 @@ class TestAPI(unittest.TestCase):
         self.assertIn("image/svg+xml", r.headers.get("content-type", ""))
         self.assertIn("<svg", r.text)
 
+    def test_import_edit_revise_append(self):
+        ms = ("## Chapter 1: The Light\n" + ("beam " * 40) +
+              "\n\n## Chapter 2: The Tide\n" + ("water " * 40))
+        # IMPORT (mock so the bible is reverse-engineered offline)
+        r = self.client.post("/api/books/import",
+                             json={"text": ms, "title": "Imported", "genre": "horror", "mock": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        bid = d["book"]["id"]
+        self.assertEqual(d["book"]["chapters_total"], 2)
+        self.assertEqual(d["book"]["chapters_written"], 2)
+        self.assertEqual([p["title"] for p in d["bible"]["outline"]],
+                         ["The Light", "The Tide"])
+        # EDIT chapter 1 (manual, no model)
+        r = self.client.put(f"/api/books/{bid}/chapters/1",
+                            json={"text": "A hand-edited opening.", "title": "Light (edited)"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["title"], "Light (edited)")
+        self.assertEqual(self.client.get(f"/api/books/{bid}/chapters/1").json()["text"],
+                         "A hand-edited opening.")
+        # REVISE chapter 2 (mock)
+        r = self.client.post(f"/api/books/{bid}/chapters/2/revise",
+                            json={"instructions": "tighten", "mock": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertGreater(r.json()["word_count"], 0)
+        # APPEND 2 chapters (mock)
+        r = self.client.post(f"/api/books/{bid}/outline", json={"count": 2, "mock": True})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(r.json()["added"]), 2)
+        self.assertEqual(self.client.get(f"/api/books/{bid}").json()["book"]["chapters_total"], 4)
+
+    def test_import_empty_rejected(self):
+        r = self.client.post("/api/books/import", json={"text": "   ", "mock": True})
+        self.assertIn(r.status_code, (400, 422))
+
     def test_generate_cover_requires_image_backend(self):
         # With no image backend configured -> a clear 400, not a 500/network call.
         book_id = self._create_book()["book"]["id"]

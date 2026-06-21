@@ -11,7 +11,7 @@ A local‑first book‑generation studio with a sleek, modern UI, an HTTP API, a
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-144%20passing-2ea44f)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-![MCP](https://img.shields.io/badge/MCP-20%20tools-7c3aed)
+![MCP](https://img.shields.io/badge/MCP-24%20tools-7c3aed)
 ![KDP](https://img.shields.io/badge/Amazon%20KDP-fast%20publish-FF9900?logo=amazon&logoColor=white)
 ![Build](https://img.shields.io/badge/build-none%20%C2%B7%20vanilla%20JS-orange)
 ![Design panel](https://img.shields.io/badge/design%20panel-9%2F10-e8624e)
@@ -46,13 +46,14 @@ Most "AI writer" apps give you a chat box and a wall of text. BookwriterPro give
 
 - 🪄 **Your book cover designs itself as you type.** Start a new book and a real, art‑directed jacket *forges live* beside the form — title typeset, genre‑driven palette, foil, spine, embossed motif. It's the kind of "wait, how?" moment that makes you lean in.
 - ✍️ **Watch your book get written, live.** Chapters stream in **token‑by‑token** with a "Writing…" pulse — like watching an author at the keyboard, with a running word + cost meter.
+- 📥 **Already have a draft? Import it.** Paste or drop in a `.txt`/`.md` manuscript and BookwriterPro splits it into chapters, **reverse‑engineers the story bible + continuity** from your prose, and opens it as a normal book you can then **edit by hand, revise with AI, continue (+N chapters), illustrate, and publish.**
 - 📖 **Read it like a real book.** The finished manuscript opens into a **3D page‑turn reader** — two‑page spread, drop‑caps, page numbers, the works (with a plain‑scroll fallback).
 - 🕸️ **See the story's web.** A live character‑relationship graph: clean at rest, revealing each character's ties on hover.
 - 🔌 **Bring any model — or your *subscription*.** Pick the AI per book right in the setup modal: the Anthropic, OpenAI, or OpenRouter API — **or generate on your Claude / ChatGPT / Grok monthly subscription** with no API key and no per‑token billing.
 - 🎨 **Illustrated chapters.** Flip one toggle and every chapter gets its own art, generated from the story bible — **defaulting to Pixio**, or any image API you like. Images land inline in the reader *and* embed straight into the EPUB.
 - ⌨️ **⌘K everything.** A Linear/Raycast‑class command palette to jump anywhere.
 - 🌗 **Gorgeous in light *and* dark.** A sleek, minimal design — neutral surfaces, one confident accent, crisp type — with a true dark theme, not a lazy invert. Fully responsive down to mobile.
-- 🤖 **An agent can drive the whole thing** — write *and* publish — via 20 MCP tools or a clean HTTP/OpenAPI API.
+- 🤖 **An agent can drive the whole thing** — write *and* publish — via 24 MCP tools or a clean HTTP/OpenAPI API.
 
 > A panel of independent design critics scored the rendered UI a **9/10 — "a polished, premium, shipped product."**
 
@@ -146,9 +147,9 @@ pip install -e ".[mcp]"
 python -m bookwriter.mcp_server     # stdio MCP server
 ```
 
-**20 tools**, all sharing the same data store as the web app (a book an agent creates shows up in the UI, and vice‑versa):
+**24 tools**, all sharing the same data store as the web app (a book an agent creates shows up in the UI, and vice‑versa):
 
-`list_profiles` · `list_books` · `create_book` · `write_book` · `write_chapter` · `get_status` · `get_chapter` · `get_graph` · `get_cost` · `get_manuscript` · `prepare_kdp` · `export_epub` · `export_docx` · `print_spec` · `estimate_royalties` · `generate_marketing` · `get_kdp_listing` · `generate_cover` · `generate_back_cover` · `export_pdf`
+`list_profiles` · `list_books` · `create_book` · `import_book` · `write_book` · `write_chapter` · `edit_chapter` · `revise_chapter` · `add_chapters` · `get_status` · `get_chapter` · `get_graph` · `get_cost` · `get_manuscript` · `prepare_kdp` · `export_epub` · `export_docx` · `print_spec` · `estimate_royalties` · `generate_marketing` · `get_kdp_listing` · `generate_cover` · `generate_back_cover` · `export_pdf`
 
 Claude Desktop config and details: **[`docs/MCP.md`](docs/MCP.md)**.
 
@@ -296,7 +297,7 @@ bookwriter/
   mock.py        offline MockLLM (demo mode + tests)
   server/        FastAPI app, service layer, SSE event broker
   serve.py       `python -m bookwriter.serve`
-  mcp_server.py  MCP stdio server (20 tools)
+  mcp_server.py  MCP stdio server (24 tools)
   web/           the studio UI (index.html, styles.css, app.js, covers.js, palette.js, kdp.js)
 docs/            ARCHITECTURE.md · MCP.md · screenshots/
 tests/           144 offline tests

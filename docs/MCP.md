@@ -9,7 +9,7 @@ in the web app, and vice versa.
 
 ## What it does
 
-The server exposes twenty tools. Every tool returns plain JSON. Use `mock=True`
+The server exposes twenty-four tools. Every tool returns plain JSON. Use `mock=True`
 to run **fully offline with no API key** (deterministic placeholder prose) —
 ideal for trying the tools before spending tokens.
 
@@ -18,6 +18,10 @@ ideal for trying the tools before spending tokens.
 | `list_profiles()` | Quality profiles (premium/balanced/draft): which Claude model runs each stage + per-model prices. |
 | `list_books()` | Every book in the shared data dir, with progress. |
 | `create_book(premise, chapters=12, words_per_chapter=2000, title="", genre="", profile="balanced", mock=False)` | Plan a book **synchronously** (bible + characters + chapter outline). Returns the new book `id` and the full planned `bible`. |
+| `import_book(text, title="", genre="", guidance="", analyze=True, mock=False)` | Import pre-written material: split into chapters, reverse-engineer the bible + continuity, record every chapter. Returns the new book `id` + `bible`. |
+| `edit_chapter(book_id, number, text, title="", reextract=False)` | Replace a chapter's prose (manual edit; no model). `reextract=True` re-runs continuity over the new text. |
+| `revise_chapter(book_id, number, instructions="")` | AI-revise an existing chapter per instructions (or polish), consistent with the bible. |
+| `add_chapters(book_id, count=3, guidance="")` | Continue the story: propose & append N new outline chapters (then `write_book`). |
 | `write_book(book_id, only=None)` | Write chapters **synchronously**; resumes from the last unwritten chapter. Returns `chapters_written`, `cost`, `flags`. |
 | `write_chapter(book_id, number)` | Write/rewrite a single chapter (sugar for `write_book(only=[number])`). |
 | `get_status(book_id)` | `{chapters_total, chapters_written}`. |
