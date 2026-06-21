@@ -30,6 +30,48 @@ class TestSplitter(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(split_into_chapters("   "), [])
 
+    def test_prose_starting_with_chapter_or_part_is_not_a_heading(self):
+        # Regression: "Part of her..." / "Chapter house..." are prose, not headings.
+        for line in ("Part of her wanted to run away.",
+                     "Chapter and verse, he quoted the law.",
+                     "Chapter house was empty."):
+            self.assertIsNone(__import__("bookwriter.importer", fromlist=["_is_heading"])._is_heading(line))
+        t = "She walked in slowly.\nPart of her wanted to run away.\nBut she stayed and faced him."
+        ch = split_into_chapters(t)
+        self.assertEqual(len(ch), 1)
+        # no text is lost
+        for frag in ("walked in slowly", "Part of her wanted to run away", "faced him"):
+            self.assertIn(frag, ch[0]["body"])
+
+    def test_digit_heading_with_trailing_sentence_is_not_a_heading(self):
+        # "Chapter 3 of the deal was signed." ends like a sentence -> not a heading.
+        imp = __import__("bookwriter.importer", fromlist=["_is_heading"])
+        self.assertIsNone(imp._is_heading("Chapter 3 of the deal was signed."))
+        # but a real numbered heading still works
+        self.assertIsNotNone(imp._is_heading("Chapter 3: The Vault"))
+        self.assertIsNotNone(imp._is_heading("Chapter 3"))
+
+    def test_titled_heading_ending_in_sentence_punctuation_is_a_heading(self):
+        # Regression: a colon-titled heading whose title ends in ?/!/. is still a heading.
+        imp = __import__("bookwriter.importer", fromlist=["_is_heading"])
+        for h in ("Chapter 5: Who Are You?", "Chapter 7: Run!", "Chapter One: The Beginning."):
+            self.assertIsNotNone(imp._is_heading(h), h)
+        text = ("Chapter 1: The Start\nHe woke early.\n\n"
+                "Chapter 2: Who Are You?\nA stranger appeared.\n\n"
+                "Chapter 3: The End.\nIt was over.")
+        ch = split_into_chapters(text)
+        # 3 boundaries preserved; the "?" title survives (a trailing "." is trimmed
+        # by the title cleaner, which is fine).
+        self.assertEqual(len(ch), 3)
+        self.assertEqual([c["title"] for c in ch][:2], ["The Start", "Who Are You?"])
+        for frag in ("He woke early.", "A stranger appeared.", "It was over."):
+            self.assertTrue(any(frag in c["body"] for c in ch), frag)
+
+    def test_single_char_markdown_heading(self):
+        imp = __import__("bookwriter.importer", fromlist=["_is_heading"])
+        self.assertEqual(imp._is_heading("## X"), "X")
+        self.assertEqual(imp._is_heading("## A long title"), "A long title")
+
 
 class TestImportGraph(unittest.TestCase):
     def _settings(self):
@@ -79,6 +121,37 @@ class TestModify(unittest.TestCase):
                                g, count=3)
         self.assertEqual(len(plans), 3)
         self.assertEqual([p.number for p in plans], [3, 4, 5])
+
+    def test_revise_preserves_synopsis_line(self):
+        g = self._graph()
+        g.chapters[1].synopsis_line = "Ch1 synopsis kept"
+        new = revise_chapter(MockLLM(), Settings().with_profile("draft"), CostLedger(),
+                             g, g.bible.plan(1), g.chapters[1].text, instructions="polish")
+        # a revise that doesn't re-extract must NOT blank the synopsis
+        self.assertEqual(new.synopsis_line, "Ch1 synopsis kept")
+
+    def test_extend_outline_tolerates_non_int_fields(self):
+        class _BadLLM:
+            def complete_json(self, **kw):
+                return {"outline": [{"title": "Next", "act": "three", "word_target": "lots"}]}
+            def complete_text(self, **kw):
+                return ""
+        g = self._graph()
+        plans = extend_outline(_BadLLM(), Settings().with_profile("draft"), CostLedger(),
+                               g, count=1)  # must not raise on "three"/"lots"
+        self.assertEqual(plans[0].act, 3)
+        self.assertEqual(plans[0].word_target, 2000)
+
+    def test_extend_outline_zero_word_target_backfills(self):
+        class _ZeroLLM:
+            def complete_json(self, **kw):
+                return {"outline": [{"title": "Next", "word_target": 0}]}
+            def complete_text(self, **kw):
+                return ""
+        g = self._graph()
+        plans = extend_outline(_ZeroLLM(), Settings().with_profile("draft"), CostLedger(),
+                               g, count=1, words_per_chapter=1500)
+        self.assertEqual(plans[0].word_target, 1500)  # 0 -> default, not "write 0 words"
 
 
 if __name__ == "__main__":

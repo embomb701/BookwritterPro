@@ -155,18 +155,26 @@ def extend_outline(
     except Exception:  # noqa: BLE001 - fall back to blank planned chapters
         items = []
 
+    def _as_int(v, default):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
     out: List[ChapterPlan] = []
     for i in range(count):
         it = items[i] if i < len(items) and isinstance(items[i], dict) else {}
         out.append(ChapterPlan(
             number=start + i,
             title=str(it.get("title") or f"Chapter {start + i}")[:120],
-            act=int(it.get("act") or 3),
+            act=_as_int(it.get("act"), 3),
             purpose=str(it.get("purpose") or ""),
             pov_character=str(it.get("pov_character") or ""),
             beats=[str(x) for x in (it.get("beats") or []) if isinstance(x, str)],
             tension=str(it.get("tension") or ""),
             forward_hook=str(it.get("forward_hook") or ""),
-            word_target=int(it.get("word_target") or words_per_chapter),
+            # `or words_per_chapter` re-applies the falsy backfill (a model-emitted
+            # 0 must not leak "write 0 words"), matching plan_book's behavior.
+            word_target=_as_int(it.get("word_target"), words_per_chapter) or words_per_chapter,
         ))
     return out

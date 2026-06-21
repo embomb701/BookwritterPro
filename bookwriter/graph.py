@@ -269,11 +269,19 @@ class StoryGraph:
         for to in delta.threads_opened:
             if not isinstance(to, dict):
                 continue
-            tid = to.get("id") or _slug(to.get("name", f"thread{len(b.threads) + 1}"))
+            # Coerce off-spec model output to strings before slugging/storing — a
+            # non-string name would otherwise crash _slug (iterates the value).
+            tid_raw = to.get("id")
+            name = to.get("name")
+            name = name if isinstance(name, str) else ""
+            desc = to.get("description")
+            desc = desc if isinstance(desc, str) else ""
+            tid = (tid_raw if isinstance(tid_raw, str) and tid_raw else
+                   _slug(name or f"thread{len(b.threads) + 1}"))
             if not any(t.id == tid for t in b.threads):
                 b.threads.append(PlotThread(
-                    id=tid, name=to.get("name", tid),
-                    description=to.get("description", ""),
+                    id=tid, name=name or tid,
+                    description=desc,
                     status="open", opened_chapter=delta.chapter,
                 ))
         for tid in delta.threads_resolved:
@@ -298,8 +306,11 @@ class StoryGraph:
         rec.synopsis_line = line
         # Synopsis is a 1-based-by-chapter list. A number < 1 (degenerate plan from
         # a non-conforming model) would index self.synopsis[-1] and clobber the last
-        # chapter — guard it (the record itself is still stored above).
-        if rec.number < 1:
+        # chapter — guard it (the record itself is still stored above). Also reject
+        # an implausibly large number so a single off-spec value (e.g. 100000) can't
+        # pad the list to that size and blow up state.json.
+        ceiling = max(len(self.bible.outline), len(self.synopsis)) + 1
+        if rec.number < 1 or rec.number > ceiling:
             return
         while len(self.synopsis) < rec.number:
             self.synopsis.append("")
@@ -326,5 +337,7 @@ class StoryGraph:
         self.synopsis = list(syn) if isinstance(syn, list) else []
 
 
-def _slug(name: str) -> str:
+def _slug(name) -> str:
+    if not isinstance(name, str):
+        name = str(name)
     return "".join(ch.lower() if ch.isalnum() else "_" for ch in name).strip("_")[:32] or "x"

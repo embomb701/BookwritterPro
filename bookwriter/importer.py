@@ -35,13 +35,25 @@ from .prompts import PLAN_SCHEMA
 # --------------------------------------------------------------------------- #
 # 1. Chapter splitting
 # --------------------------------------------------------------------------- #
-_MD_HEADING = re.compile(r"^\s{0,3}#{1,3}\s+(.+\S)\s*$")
+_MD_HEADING = re.compile(r"^\s{0,3}#{1,3}\s+(\S.*?)\s*$")
+# Spelled-out numbers/ordinals only — NOT any word — so a prose line like
+# "Part of her wanted to run away." is not mistaken for a chapter heading.
+_NUMWORD = (
+    r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|"
+    r"thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"eleventh|twelfth|thirteenth|fourteenth|fifteenth|twentieth)"
+    r"(?:[\-\s]+(?:one|two|three|four|five|six|seven|eight|nine))?"
+)
+_CHAPTER_NUM = rf"([0-9]+|[ivxlcdm]+|{_NUMWORD})"
+# group(1)=number, group(2)=delimiter (":"/"."/"-"/"—") or "", group(3)=title/rest.
 _CHAPTER_LINE = re.compile(
-    r"^\s*(?:chapter|ch\.?|part)\s+([0-9]+|[ivxlcdm]+|[a-z\-]+)\b[\s:.\-—]*(.*)$",
+    rf"^\s*(?:chapter|ch\.?|part)\s+{_CHAPTER_NUM}\b\s*([:.\-—])?\s*(.*)$",
     re.IGNORECASE,
 )
 _CHAPTER_PREFIX = re.compile(
-    r"^\s*(?:chapter|ch\.?|part)\s+(?:[0-9]+|[ivxlcdm]+|[a-z\-]+)\b[\s:.\-—]*",
+    rf"^\s*(?:chapter|ch\.?|part)\s+{_CHAPTER_NUM}\b[\s:.\-—]*",
     re.IGNORECASE,
 )
 
@@ -65,10 +77,24 @@ def _is_heading(line: str) -> Optional[str]:
         return m.group(1)
     m = _CHAPTER_LINE.match(line)
     if m:
-        # Guard: a real heading is a short standalone line, not a sentence that
-        # merely starts with "Part of the...". Require it to be reasonably short.
-        if len(line.strip()) <= 80:
-            return line.strip()
+        s = line.strip()
+        if len(s) > 80:
+            return None
+        delim = m.group(2)
+        rest = (m.group(3) or "").strip()
+        # An explicit delimiter ("Chapter 5: …", "Chapter 3 — …", "Chapter 3. …")
+        # makes it unambiguously a titled heading — even if the title ends in
+        # "?"/"!"/"." (e.g. "Chapter 5: Who Are You?").
+        if delim:
+            return s
+        # No delimiter: "Chapter 3" / "Chapter One" (no title) is a heading; but
+        # "Chapter 3 of the deal was signed." is prose — reject when a title
+        # actually follows that reads like a sentence continuation (lowercase
+        # start, or trailing sentence punctuation).
+        if not rest:
+            return s
+        if rest[0].isupper() and s[-1] not in ".,;?!":
+            return s
     return None
 
 

@@ -98,6 +98,21 @@ class TestGraphGuards(unittest.TestCase):
         g.bible.character("c1").dynamic_card()
         g.bible.character("c1").card()
 
+    def test_apply_delta_non_string_thread_name(self):
+        from bookwriter.extractor import StateDelta
+        g = self._graph()
+        # a threads_opened entry with a non-string name must not crash _slug
+        g.apply_delta(StateDelta(chapter=1, threads_opened=[{"name": 123}]))
+        self.assertTrue(any(t.opened_chapter == 1 for t in g.bible.threads))
+
+    def test_record_chapter_caps_huge_number(self):
+        from bookwriter.models import ChapterRecord
+        g = self._graph()  # outline has 1 chapter
+        g.record_chapter(ChapterRecord(number=100000, title="x", text="y"), "syn", 240)
+        # synopsis list must NOT be padded to 100000 entries
+        self.assertLessEqual(len(g.synopsis), 2)
+        self.assertIn(100000, g.chapters)  # record itself still stored
+
     def test_prev_tail_zero_returns_empty(self):
         from bookwriter.models import ChapterRecord
         g = self._graph()

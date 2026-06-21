@@ -78,6 +78,12 @@ def write_chapter(
 
     rec = ChapterRecord(number=plan.number, title=plan.title, text=text)
     rec.word_count = _word_count(text)
+    # Carry any existing rolling-synopsis line forward so a revise/regenerate that
+    # doesn't re-extract can't blank it (which would punch a hole in the continuity
+    # context fed to later chapters). Re-extraction, when it runs, overwrites this.
+    prev = graph.chapters.get(plan.number)
+    if prev is not None and prev.synopsis_line:
+        rec.synopsis_line = prev.synopsis_line
     ledger.add_words(rec.word_count)
     return rec
 
@@ -127,5 +133,11 @@ def revise_chapter(
 
     rec = ChapterRecord(number=plan.number, title=plan.title, text=text)
     rec.word_count = _word_count(text)
+    # Carry any existing rolling-synopsis line forward so a revise/regenerate that
+    # doesn't re-extract can't blank it (which would punch a hole in the continuity
+    # context fed to later chapters). Re-extraction, when it runs, overwrites this.
+    prev = graph.chapters.get(plan.number)
+    if prev is not None and prev.synopsis_line:
+        rec.synopsis_line = prev.synopsis_line
     ledger.add_words(rec.word_count)
     return rec
