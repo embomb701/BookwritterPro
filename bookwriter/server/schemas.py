@@ -42,6 +42,40 @@ class WriteRequest(BaseModel):
     restart: bool = False
 
 
+class ImportRequest(BaseModel):
+    # Bring pre-written material in as a first-class book.
+    text: str = Field(..., min_length=1, max_length=5_000_000)
+    title: Optional[str] = Field(None, max_length=300)
+    genre: Optional[str] = Field(None, max_length=200)
+    guidance: Optional[str] = Field(None, max_length=8000)
+    profile: str = "balanced"
+    analyze: Optional[bool] = None          # reverse-engineer the bible + continuity
+    mock: bool = False
+    use_cache: bool = True
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+class ChapterEditRequest(BaseModel):
+    # Replace a chapter's prose (manual edit). Optional re-extraction of continuity.
+    text: str = Field(..., min_length=1, max_length=2_000_000)
+    title: Optional[str] = Field(None, max_length=300)
+    reextract: bool = False
+    mock: Optional[bool] = None
+
+
+class ReviseRequest(BaseModel):
+    instructions: Optional[str] = Field(None, max_length=8000)
+    mock: Optional[bool] = None
+
+
+class AppendChaptersRequest(BaseModel):
+    count: int = Field(3, ge=1, le=40)
+    words_per_chapter: int = Field(2000, ge=100, le=20000)
+    guidance: Optional[str] = Field(None, max_length=8000)
+    mock: Optional[bool] = None
+
+
 class SettingsUpdate(BaseModel):
     # Map of managed env-var name -> value ("" / null clears the override).
     values: Dict[str, Optional[str]] = Field(default_factory=dict)

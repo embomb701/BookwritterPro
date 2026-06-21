@@ -26,11 +26,15 @@ from fastapi.staticfiles import StaticFiles
 
 from .broker import EventBroker, TERMINAL_TYPES
 from .schemas import (
+    AppendChaptersRequest,
+    ChapterEditRequest,
     CoverRequest,
     CreateBookRequest,
+    ImportRequest,
     KdpRequest,
     MarketingRequest,
     PricingRequest,
+    ReviseRequest,
     SettingsUpdate,
     VerifyRequest,
     WriteRequest,
@@ -163,9 +167,27 @@ def create_app(data_dir: str | None = None) -> FastAPI:
         # Planning is synchronous and may call the model; run off the event loop.
         return await asyncio.to_thread(service.create_book, req)
 
+    @app.post("/api/books/import")
+    async def import_book(req: ImportRequest) -> Dict[str, Any]:
+        # Splits + reverse-engineers a bible (model) + records chapters; off-loop.
+        return await asyncio.to_thread(service.import_book, req)
+
     @app.get("/api/books/{book_id}")
     async def get_book(book_id: str) -> Dict[str, Any]:
         return service.get_book(book_id)
+
+    @app.put("/api/books/{book_id}/chapters/{n}")
+    async def edit_chapter(book_id: str, n: int, req: ChapterEditRequest) -> Dict[str, Any]:
+        # Manual edit; re-extraction (if requested) may call the model — off-loop.
+        return await asyncio.to_thread(service.set_chapter_text, book_id, n, req)
+
+    @app.post("/api/books/{book_id}/chapters/{n}/revise")
+    async def revise_chapter(book_id: str, n: int, req: ReviseRequest) -> Dict[str, Any]:
+        return await asyncio.to_thread(service.revise_chapter, book_id, n, req)
+
+    @app.post("/api/books/{book_id}/outline")
+    async def append_chapters(book_id: str, req: AppendChaptersRequest) -> Dict[str, Any]:
+        return await asyncio.to_thread(service.append_chapters, book_id, req)
 
     @app.post("/api/books/{book_id}/write")
     async def write_book(book_id: str, req: WriteRequest) -> Dict[str, Any]:

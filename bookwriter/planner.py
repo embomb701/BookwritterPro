@@ -92,3 +92,81 @@ def plan_book(
         if not p.word_target:
             p.word_target = words_per_chapter
     return bible
+
+
+# Schema for proposing additional chapters that CONTINUE an existing book.
+_EXTEND_ITEM = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title", "purpose", "tension", "beats", "forward_hook"],
+    "properties": {
+        "title": {"type": "string"},
+        "act": {"type": "integer"},
+        "purpose": {"type": "string"},
+        "tension": {"type": "string"},
+        "beats": {"type": "array", "items": {"type": "string"}},
+        "forward_hook": {"type": "string"},
+        "pov_character": {"type": "string"},
+        "word_target": {"type": "integer"},
+    },
+}
+EXTEND_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["outline"],
+    "properties": {"outline": {"type": "array", "items": _EXTEND_ITEM}},
+}
+
+EXTEND_SYSTEM = """You are a master novelist continuing an existing book. Given the \
+story so far (bible summary + rolling synopsis + open threads), design the NEXT \
+chapters: each with a clear purpose that advances the arc, a central tension, \
+ordered beats, and a forward hook. Honor the established characters, world, and \
+voice; move open threads toward resolution. Output ONLY the structured outline."""
+
+
+def extend_outline(
+    llm: LLM, settings: Settings, ledger: CostLedger, graph, *,
+    count: int = 3, words_per_chapter: int = 2000, guidance: str = "",
+) -> List[ChapterPlan]:
+    """Propose ``count`` new chapters that continue *graph*'s story. Returns
+    ChapterPlan entries numbered after the current outline (not yet written)."""
+    b = graph.bible
+    start = max((p.number for p in b.outline), default=0) + 1
+    cast = ", ".join(f"{c.name} ({c.role})" for c in b.characters[:12]) or "(none recorded)"
+    open_threads = ", ".join(t.name for t in b.threads if t.status != "resolved") or "(none open)"
+    user = [
+        f"TITLE: {b.title}", f"GENRE: {b.genre} | TONE: {b.tone}",
+        f"LOGLINE: {b.logline}" if b.logline else "",
+        f"CAST: {cast}", f"OPEN THREADS: {open_threads}",
+        "\nSTORY SO FAR (rolling synopsis):", graph.rolling_synopsis(),
+        f"\nAUTHOR GUIDANCE: {guidance}" if guidance else "",
+        f"\nPropose the next {count} chapters (they will be numbered "
+        f"{start}–{start + count - 1}), each ~{words_per_chapter} words.",
+    ]
+    items: List[Dict[str, Any]] = []
+    try:
+        data = llm.complete_json(
+            stage="plan", model=settings.profile.plan, system=EXTEND_SYSTEM,
+            user="\n".join(p for p in user if p), schema=EXTEND_SCHEMA,
+            max_tokens=settings.max_tokens_plan, ledger=ledger,
+            cached=None, use_cache=False,
+        )
+        items = list(data.get("outline") or [])
+    except Exception:  # noqa: BLE001 - fall back to blank planned chapters
+        items = []
+
+    out: List[ChapterPlan] = []
+    for i in range(count):
+        it = items[i] if i < len(items) and isinstance(items[i], dict) else {}
+        out.append(ChapterPlan(
+            number=start + i,
+            title=str(it.get("title") or f"Chapter {start + i}")[:120],
+            act=int(it.get("act") or 3),
+            purpose=str(it.get("purpose") or ""),
+            pov_character=str(it.get("pov_character") or ""),
+            beats=[str(x) for x in (it.get("beats") or []) if isinstance(x, str)],
+            tension=str(it.get("tension") or ""),
+            forward_hook=str(it.get("forward_hook") or ""),
+            word_target=int(it.get("word_target") or words_per_chapter),
+        ))
+    return out

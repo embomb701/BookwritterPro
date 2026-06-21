@@ -297,6 +297,90 @@ def cmd_pdf(args) -> int:
     return 0
 
 
+def cmd_import(args) -> int:
+    from .importer import build_graph_from_text
+    from .costs import CostLedger
+    from .provider import live_available
+
+    try:
+        with open(args.file, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        raise SystemExit(f"error: cannot read {args.file!r}: {e}")
+    if not text.strip():
+        raise SystemExit("error: the file is empty")
+
+    settings = _make_settings(args)
+    store = BookStore(args.project)
+    # Analyze (reverse-engineer the bible) when a model is available; otherwise
+    # do a structure-only import so it never fails.
+    analyze = not getattr(args, "no_analyze", False)
+    if args.mock:
+        llm = _make_llm(args)
+    elif live_available():
+        llm = _make_llm(args)
+    else:
+        llm, analyze = None, False
+    graph = build_graph_from_text(
+        llm, settings, CostLedger(), text=text,
+        title=args.title or None, genre=args.genre or None,
+        analyze=analyze, run_extract=analyze,
+    )
+    store.save_graph(graph)
+    for rec in graph.chapters.values():
+        store.save_chapter(rec)
+    store.assemble_manuscript(graph)
+    print(f"Imported {len(graph.chapters)} chapter(s) into {args.project}")
+    print(f"  Title: {graph.bible.title}")
+    print("  Now: `bookwriter report` / `write` to extend, or `kdp` to publish.")
+    return 0
+
+
+def cmd_revise(args) -> int:
+    from .writer import revise_chapter
+    from .costs import CostLedger
+
+    store = BookStore(args.project)
+    graph = store.load_graph()
+    if graph is None:
+        raise SystemExit("error: no plan found in project; run 'generate' or 'import' first")
+    plan = graph.bible.plan(args.chapter)
+    rec = graph.chapters.get(args.chapter)
+    if plan is None or rec is None:
+        raise SystemExit(f"error: chapter {args.chapter} hasn't been written yet")
+    settings = _make_settings(args)
+    new_rec = revise_chapter(_make_llm(args), settings, CostLedger(), graph, plan,
+                             rec.text, instructions=args.instructions or "")
+    graph.chapters[args.chapter] = new_rec
+    graph.record_chapter(new_rec, new_rec.synopsis_line, settings.synopsis_line_chars)
+    store.save_chapter(new_rec)
+    store.save_graph(graph)
+    store.assemble_manuscript(graph)
+    print(f"Revised chapter {args.chapter}: {new_rec.title} ({new_rec.word_count} words)")
+    return 0
+
+
+def cmd_continue(args) -> int:
+    from .planner import extend_outline
+    from .costs import CostLedger
+
+    store = BookStore(args.project)
+    graph = store.load_graph()
+    if graph is None:
+        raise SystemExit("error: no plan found in project; run 'generate' or 'import' first")
+    settings = _make_settings(args)
+    new_plans = extend_outline(_make_llm(args), settings, CostLedger(), graph,
+                               count=args.count, guidance=args.guidance or "")
+    graph.bible.outline.extend(new_plans)
+    graph.bible.target_chapters = len(graph.bible.outline)
+    store.save_graph(graph)
+    print(f"Added {len(new_plans)} chapter(s) to the outline:")
+    for p in new_plans:
+        print(f"  {p.number}. {p.title}")
+    print("Now run `bookwriter write` to generate them.")
+    return 0
+
+
 def cmd_profiles(_args) -> int:
     print("Quality profiles (stage -> model):\n")
     for name, p in QUALITY_PROFILES.items():
@@ -384,6 +468,27 @@ def build_parser() -> argparse.ArgumentParser:
                     help="which PDF to build (default full)")
     sp.add_argument("--out", default="", help="output path (default <project>/kdp/<part>.pdf)")
     sp.set_defaults(func=cmd_pdf)
+
+    sp = sub.add_parser("import", help="import a pre-written manuscript (.txt/.md) into a book")
+    add_common(sp)
+    sp.add_argument("--file", required=True, help="path to the manuscript text/markdown file")
+    sp.add_argument("--title", default=None, help="book title (else inferred)")
+    sp.add_argument("--genre", default=None, help="genre hint")
+    sp.add_argument("--no-analyze", action="store_true",
+                    help="structure-only import (skip reverse-engineering the bible)")
+    sp.set_defaults(func=cmd_import)
+
+    sp = sub.add_parser("revise", help="AI-revise an existing chapter")
+    add_common(sp)
+    sp.add_argument("--chapter", type=int, required=True, help="chapter number to revise")
+    sp.add_argument("--instructions", default="", help="how to revise (default: polish)")
+    sp.set_defaults(func=cmd_revise)
+
+    sp = sub.add_parser("continue", help="propose & append more chapters (then `write`)")
+    add_common(sp)
+    sp.add_argument("--count", type=int, default=3, help="how many chapters to add")
+    sp.add_argument("--guidance", default="", help="direction for where the story goes next")
+    sp.set_defaults(func=cmd_continue)
 
     sp = sub.add_parser("profiles", help="list quality profiles and pricing")
     sp.set_defaults(func=cmd_profiles)

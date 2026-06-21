@@ -352,6 +352,19 @@ class _ServiceAdapter:
     def export_pdf(self, book_id: str, part: str = "full", **kw) -> Dict[str, Any]:
         return self._local.export_pdf(book_id, part, **kw)
 
+    # import / modify share the local impl (same on-disk data dir as HTTP)
+    def import_book(self, **kw) -> Dict[str, Any]:
+        return self._local.import_book(**kw)
+
+    def edit_chapter(self, book_id: str, number: int, **kw) -> Dict[str, Any]:
+        return self._local.edit_chapter(book_id, number, **kw)
+
+    def revise_chapter(self, book_id: str, number: int, **kw) -> Dict[str, Any]:
+        return self._local.revise_chapter(book_id, number, **kw)
+
+    def append_chapters(self, book_id: str, **kw) -> Dict[str, Any]:
+        return self._local.append_chapters(book_id, **kw)
+
 
 def _flatten_create(res: Dict[str, Any]) -> Dict[str, Any]:
     """Turn the HTTP {book, bible} into the flat MCP create_book payload."""
@@ -714,6 +727,120 @@ class _LocalBookService:
             raise BookNotFound(f"{book_id} has no plan")
         md = self._store(book_id).assemble_manuscript(graph)
         return {"markdown": md, "words": len(md.split())}
+
+    # ---- import pre-written material + modify chapters -----------------
+    def import_book(self, *, text: str, title: str = "", genre: str = "",
+                    guidance: str = "", profile: str = "balanced",
+                    analyze: bool = True, mock: bool = False) -> Dict[str, Any]:
+        from bookwriter.importer import build_graph_from_text
+        from bookwriter.costs import CostLedger
+        if not (text or "").strip():
+            raise ValueError("text is required")
+        book_id = make_book_id(title.strip() or "Imported manuscript",
+                              exists=lambda bid: os.path.exists(self._meta_path(bid)))
+        meta = {
+            "id": book_id, "title": title.strip(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "profile": profile, "mock": bool(mock), "genre": genre,
+            "logline": "", "provider": "", "model": "", "chapter_images": False,
+            "use_cache": True, "run_continuity_check": True, "imported": True,
+        }
+        self._write_meta(meta)
+        settings = self._settings(book_id, meta)
+        llm = self._make_llm(bool(mock), meta) if (mock or analyze) else None
+        if llm is None:
+            analyze = False
+        graph = build_graph_from_text(
+            llm, settings, CostLedger(), text=text, title=title or None,
+            genre=genre or None, guidance=guidance, analyze=analyze, run_extract=analyze)
+        store = self._store(book_id)
+        store.save_graph(graph)
+        for rec in graph.chapters.values():
+            store.save_chapter(rec)
+        store.assemble_manuscript(graph)
+        meta["title"] = (title or graph.bible.title) or meta["title"]
+        meta["genre"] = genre or graph.bible.genre or meta["genre"]
+        meta["logline"] = graph.bible.logline or ""
+        self._write_meta(meta)
+        out = self._summary(meta)
+        out["chapters"] = out["chapters_total"]
+        out["bible"] = graph.bible.to_dict()
+        return out
+
+    def edit_chapter(self, book_id: str, number: int, *, text: str,
+                     title: str = "", reextract: bool = False) -> Dict[str, Any]:
+        from bookwriter.models import ChapterRecord
+        meta = self._read_meta(book_id)
+        store = self._store(book_id)
+        graph = self._load_graph_or_404(book_id)
+        plan = graph.bible.plan(number)
+        if plan is None:
+            raise BookNotFound(f"{book_id} chapter {number} not in outline")
+        if not (text or "").strip():
+            raise ValueError("text is required")
+        rec = graph.chapters.get(number) or ChapterRecord(number=number, title=plan.title, text="")
+        rec.text = text.strip()
+        if title:
+            rec.title = title.strip()
+            plan.title = title.strip()
+        rec.word_count = len(rec.text.split())
+        rec.compute_fingerprint()
+        graph.chapters[number] = rec
+        settings = self._settings(book_id, meta)
+        synopsis = rec.synopsis_line
+        if reextract:
+            try:
+                from bookwriter.extractor import extract_delta
+                from bookwriter.costs import CostLedger
+                delta = extract_delta(self._make_llm(bool(meta.get("mock", False)), meta),
+                                      settings, CostLedger(), graph, plan, rec)
+                graph.apply_delta(delta)
+                synopsis = delta.synopsis_line
+            except Exception:
+                pass
+        graph.record_chapter(rec, synopsis, settings.synopsis_line_chars)
+        store.save_chapter(rec)
+        store.save_graph(graph)
+        store.assemble_manuscript(graph)
+        return {"number": number, "title": rec.title, "word_count": rec.word_count}
+
+    def revise_chapter(self, book_id: str, number: int, *,
+                       instructions: str = "") -> Dict[str, Any]:
+        from bookwriter.writer import revise_chapter as _revise
+        from bookwriter.costs import CostLedger
+        meta = self._read_meta(book_id)
+        store = self._store(book_id)
+        graph = self._load_graph_or_404(book_id)
+        plan = graph.bible.plan(number)
+        rec = graph.chapters.get(number)
+        if plan is None or rec is None:
+            raise BookNotFound(f"{book_id} chapter {number} not written yet")
+        settings = self._settings(book_id, meta)
+        new_rec = _revise(self._make_llm(bool(meta.get("mock", False)), meta),
+                          settings, CostLedger(), graph, plan, rec.text, instructions or "")
+        graph.chapters[number] = new_rec
+        graph.record_chapter(new_rec, new_rec.synopsis_line, settings.synopsis_line_chars)
+        store.save_chapter(new_rec)
+        store.save_graph(graph)
+        store.assemble_manuscript(graph)
+        return {"number": number, "title": new_rec.title, "word_count": new_rec.word_count}
+
+    def append_chapters(self, book_id: str, *, count: int = 3,
+                        words_per_chapter: int = 2000, guidance: str = "") -> Dict[str, Any]:
+        from bookwriter.planner import extend_outline
+        from bookwriter.costs import CostLedger
+        meta = self._read_meta(book_id)
+        store = self._store(book_id)
+        graph = self._load_graph_or_404(book_id)
+        new_plans = extend_outline(self._make_llm(bool(meta.get("mock", False)), meta),
+                                   self._settings(book_id, meta), CostLedger(), graph,
+                                   count=count, words_per_chapter=words_per_chapter,
+                                   guidance=guidance)
+        graph.bible.outline.extend(new_plans)
+        graph.bible.target_chapters = len(graph.bible.outline)
+        store.save_graph(graph)
+        return {"added": [{"number": p.number, "title": p.title} for p in new_plans],
+                "chapters_total": len(graph.bible.outline)}
 
     # ---- KDP packaging ------------------------------------------------
     def _kdp_dir(self, book_id: str) -> str:
@@ -1420,6 +1547,61 @@ def build_server():
         try:
             return get_service().export_pdf(book_id, part)
         except (BookNotFound, ValueError, RuntimeError) as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def import_book(text: str, title: str = "", genre: str = "", guidance: str = "",
+                    analyze: bool = True, mock: bool = False) -> Dict[str, Any]:
+        """Import pre-written material as a new, fully-editable book.
+
+        Splits the manuscript into chapters (on markdown headings or 'Chapter N'
+        lines), reverse-engineers the story bible + continuity from the prose when
+        a model is available (analyze=True; mock=True for offline), and records
+        every chapter. The result is a normal book you can then revise, continue,
+        illustrate, and publish. Returns the new book id + planned bible (or
+        {"error":...}).
+        """
+        try:
+            return get_service().import_book(
+                text=text, title=title, genre=genre, guidance=guidance,
+                analyze=analyze, mock=mock)
+        except (ValueError, RuntimeError) as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def edit_chapter(book_id: str, number: int, text: str, title: str = "",
+                     reextract: bool = False) -> Dict[str, Any]:
+        """Replace a chapter's prose (manual edit). Instant; no model needed.
+        Set reextract=True to re-run continuity extraction over the new text.
+        Returns {"number","title","word_count"} or {"error":...}.
+        """
+        try:
+            return get_service().edit_chapter(book_id, number, text=text,
+                                              title=title, reextract=reextract)
+        except (BookNotFound, ValueError) as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def revise_chapter(book_id: str, number: int, instructions: str = "") -> Dict[str, Any]:
+        """AI-revise an existing chapter per `instructions` (or polish if empty),
+        keeping it consistent with the bible + continuity. Returns
+        {"number","title","word_count"} or {"error":...}.
+        """
+        try:
+            return get_service().revise_chapter(book_id, number, instructions=instructions)
+        except (BookNotFound, RuntimeError) as e:
+            return {"error": str(e)}
+
+    @mcp.tool()
+    def add_chapters(book_id: str, count: int = 3, guidance: str = "") -> Dict[str, Any]:
+        """Continue the story: propose & append `count` new outline chapters that
+        follow from the current ending. They're left UNwritten — call write_book
+        afterward to generate them. Returns {"added":[...],"chapters_total"} or
+        {"error":...}.
+        """
+        try:
+            return get_service().append_chapters(book_id, count=count, guidance=guidance)
+        except (BookNotFound, RuntimeError) as e:
             return {"error": str(e)}
 
     return mcp

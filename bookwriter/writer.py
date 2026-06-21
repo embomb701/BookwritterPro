@@ -80,3 +80,52 @@ def write_chapter(
     rec.word_count = _word_count(text)
     ledger.add_words(rec.word_count)
     return rec
+
+
+def revise_chapter(
+    llm: LLM, settings: Settings, ledger: CostLedger, graph: StoryGraph,
+    plan: ChapterPlan, current_text: str, instructions: str = "",
+    on_delta: Optional[Callable[[str], None]] = None,
+) -> ChapterRecord:
+    """Rewrite an EXISTING chapter per *instructions*, keeping it consistent with
+    the bible + continuity. Used for both AI polish and targeted edits of imported
+    or generated prose. Returns a fresh ChapterRecord with the revised text."""
+    cached = graph.static_prefix() if settings.use_cache else None
+
+    parts: List[str] = []
+    if not settings.use_cache:
+        parts.append(graph.static_prefix())
+        parts.append("")
+    parts.append("## Story so far (rolling synopsis)")
+    parts.append(graph.rolling_synopsis())
+    dyn = graph.dynamic_state(plan)
+    if dyn:
+        parts.append("\n## Continuity state right now")
+        parts.append(dyn)
+    parts.append("\n## The chapter to revise (current text)")
+    parts.append(current_text or "(empty)")
+    parts.append("\n## Revision instructions")
+    parts.append(instructions.strip() or
+                 "Polish the prose: tighten sentences, sharpen imagery, fix awkward "
+                 "phrasing and repetition. Keep the plot, characters, POV, and "
+                 "roughly the same length.")
+    parts.append("\nReturn the COMPLETE revised chapter prose only — no notes, no "
+                 "preamble, no headings.")
+
+    text = llm.complete_text(
+        stage="write",
+        model=settings.profile.write,
+        system=WRITER_SYSTEM,
+        user="\n".join(parts),
+        max_tokens=settings.max_tokens_write,
+        ledger=ledger,
+        cached=cached,
+        use_cache=settings.use_cache,
+        cache_ttl=settings.cache_ttl,
+        on_delta=on_delta,
+    ).strip()
+
+    rec = ChapterRecord(number=plan.number, title=plan.title, text=text)
+    rec.word_count = _word_count(text)
+    ledger.add_words(rec.word_count)
+    return rec

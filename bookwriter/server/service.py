@@ -357,6 +357,198 @@ class BookService:
         }
 
     # ------------------------------------------------------------------ #
+    # Import pre-written material + modify existing chapters
+    # ------------------------------------------------------------------ #
+    def import_book(self, req: "ImportRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        """Turn a pasted/uploaded manuscript into a first-class book."""
+        from .. import importer
+        from ..pipeline import _ledger_dict
+
+        text = (req.text or "").strip()
+        if not text:
+            raise ServiceError(400, "Paste or upload a manuscript to import.")
+        if req.profile not in QUALITY_PROFILES:
+            raise ServiceError(400, f"Unknown profile {req.profile!r}.")
+
+        prov = req.provider or None
+        title_hint = req.title or "Imported manuscript"
+        book_id = self._make_id(title_hint)
+        meta = {
+            "id": book_id,
+            "title": req.title or "",
+            "created_at": _now_iso(),
+            "profile": req.profile,
+            "mock": bool(req.mock),
+            "genre": req.genre or "",
+            "logline": "",
+            "use_cache": bool(req.use_cache),
+            "run_continuity_check": True,
+            "provider": req.provider or "",
+            "model": req.model or "",
+            "chapter_images": False,
+            "imported": True,
+        }
+        self._write_meta(book_id, meta)
+
+        # Reverse-engineer the bible + continuity when a model is available; with
+        # no creds (and not mock) fall back to a structure-only import so it never
+        # fails — the chapters are still imported and fully editable.
+        analyze = True if req.analyze is None else bool(req.analyze)
+        if req.mock:
+            llm = self._make_llm(True, meta)
+        elif self._live(prov):
+            llm = self._make_llm(False, meta)
+        else:
+            llm, analyze = None, False
+
+        settings = self._make_settings(meta, book_id)
+        ledger = CostLedger()
+        try:
+            graph = importer.build_graph_from_text(
+                llm, settings, ledger, text=text, title=req.title, genre=req.genre,
+                guidance=req.guidance or "", analyze=analyze, run_extract=analyze,
+            )
+        except Exception as e:  # noqa: BLE001 - surfaced to client; clean up
+            shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
+            raise ServiceError(500, f"Import failed: {e}")
+
+        store = BookStore(self._book_dir(book_id))
+        store.save_graph(graph)
+        for rec in graph.chapters.values():
+            store.save_chapter(rec)
+        store.assemble_manuscript(graph)
+        try:
+            store.save_cost(ledger.report(), _ledger_dict(ledger))
+        except Exception:  # noqa: BLE001 - cost snapshot is non-critical
+            pass
+
+        meta["title"] = (req.title or graph.bible.title) or meta["title"]
+        meta["genre"] = req.genre or graph.bible.genre or meta["genre"]
+        meta["logline"] = graph.bible.logline or meta["logline"]
+        self._write_meta(book_id, meta)
+        return {"book": self._summary(book_id, meta), "bible": graph.bible.to_dict()}
+
+    def _chapter_payload(self, book_id, graph, n) -> Dict[str, Any]:
+        rec = graph.chapters.get(n)
+        plan = graph.bible.plan(n)
+        return {
+            "number": n,
+            "title": (rec.title if rec else (plan.title if plan else f"Chapter {n}")),
+            "text": rec.text if rec else "",
+            "word_count": rec.word_count if rec else 0,
+            "written": bool(rec),
+        }
+
+    def set_chapter_text(self, book_id: str, n: int, req: "ChapterEditRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        """Replace a chapter's prose (manual edit). Instant; no model needed.
+        Optionally re-run continuity extraction when ``reextract`` and creds exist."""
+        meta = self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        plan = graph.bible.plan(n)
+        if plan is None:
+            raise ServiceError(404, f"Chapter {n} is not in the outline.")
+        text = (req.text or "").strip()
+        if not text:
+            raise ServiceError(400, "Chapter text cannot be empty.")
+
+        from ..models import ChapterRecord
+        rec = graph.chapters.get(n) or ChapterRecord(number=n, title=plan.title, text="")
+        rec.text = text
+        if req.title:
+            rec.title = req.title.strip()
+            plan.title = req.title.strip()
+        rec.word_count = len(text.split())
+        rec.compute_fingerprint()
+        graph.chapters[n] = rec
+
+        settings = self._make_settings(meta, book_id)
+        synopsis = rec.synopsis_line
+        if req.reextract:
+            mock = bool(req.mock) if req.mock is not None else bool(meta.get("mock", False))
+            if mock or self._live(meta.get("provider") or None):
+                try:
+                    from ..extractor import extract_delta
+                    llm = self._make_llm(mock, meta)
+                    delta = extract_delta(llm, settings, CostLedger(), graph, plan, rec)
+                    graph.apply_delta(delta)
+                    synopsis = delta.synopsis_line
+                except Exception:  # noqa: BLE001 - best-effort
+                    pass
+        graph.record_chapter(rec, synopsis, settings.synopsis_line_chars)
+        store.save_chapter(rec)
+        store.save_graph(graph)
+        store.assemble_manuscript(graph)
+        return self._chapter_payload(book_id, graph, n)
+
+    def revise_chapter(self, book_id: str, n: int, req: "ReviseRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        """AI-revise an existing chapter per instructions (or polish if none)."""
+        meta = self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        plan = graph.bible.plan(n)
+        rec = graph.chapters.get(n)
+        if plan is None or rec is None:
+            raise ServiceError(404, f"Chapter {n} hasn't been written yet.")
+
+        mock = bool(req.mock) if req.mock is not None else bool(meta.get("mock", False))
+        prov = meta.get("provider") or None
+        if not mock and not self._live(prov):
+            raise ServiceError(400, self._no_creds_msg(prov))
+
+        settings = self._make_settings(meta, book_id)
+        llm = self._make_llm(mock, meta)
+        ledger = CostLedger()
+        from ..writer import revise_chapter as _revise
+        try:
+            new_rec = _revise(llm, settings, ledger, graph, plan, rec.text,
+                              instructions=req.instructions or "")
+        except Exception as e:  # noqa: BLE001
+            raise ServiceError(500, f"Revision failed: {e}")
+        graph.chapters[n] = new_rec
+        graph.record_chapter(new_rec, new_rec.synopsis_line, settings.synopsis_line_chars)
+        store.save_chapter(new_rec)
+        store.save_graph(graph)
+        store.assemble_manuscript(graph)
+        return self._chapter_payload(book_id, graph, n)
+
+    def append_chapters(self, book_id: str, req: "AppendChaptersRequest") -> Dict[str, Any]:  # type: ignore[name-defined]
+        """Propose & append N new outline chapters that continue the story. They
+        are left UNwritten — the caller then runs the normal write/generate flow."""
+        meta = self._require_meta(book_id)
+        store = BookStore(self._book_dir(book_id))
+        graph = store.load_graph()
+        if graph is None:
+            raise ServiceError(404, f"Book {book_id!r} has no plan.")
+        mock = bool(req.mock) if req.mock is not None else bool(meta.get("mock", False))
+        prov = meta.get("provider") or None
+        if not mock and not self._live(prov):
+            raise ServiceError(400, self._no_creds_msg(prov))
+
+        settings = self._make_settings(meta, book_id)
+        llm = self._make_llm(mock, meta)
+        from ..planner import extend_outline
+        try:
+            new_plans = extend_outline(
+                llm, settings, CostLedger(), graph,
+                count=req.count, words_per_chapter=req.words_per_chapter,
+                guidance=req.guidance or "",
+            )
+        except Exception as e:  # noqa: BLE001
+            raise ServiceError(500, f"Could not extend the outline: {e}")
+        graph.bible.outline.extend(new_plans)
+        graph.bible.target_chapters = len(graph.bible.outline)
+        store.save_graph(graph)
+        return {
+            "added": [{"number": p.number, "title": p.title} for p in new_plans],
+            "chapters_total": len(graph.bible.outline),
+        }
+
+    # ------------------------------------------------------------------ #
     # Read
     # ------------------------------------------------------------------ #
     def get_book(self, book_id: str) -> Dict[str, Any]:
