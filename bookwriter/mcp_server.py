@@ -531,6 +531,9 @@ class _LocalBookService:
                     run_continuity_check: bool = True) -> Dict[str, Any]:
         if not premise or not premise.strip():
             raise ValueError("premise is required")
+        from bookwriter.config import QUALITY_PROFILES
+        if profile not in QUALITY_PROFILES:
+            raise ValueError(f"unknown profile {profile!r}; choose from {sorted(QUALITY_PROFILES)}")
         if not mock:
             from bookwriter.provider import live_available, missing_credentials_message
             if not live_available():
@@ -559,17 +562,22 @@ class _LocalBookService:
 
         from bookwriter.pipeline import BookPipeline
 
-        settings = self._settings(book_id, meta)
-        llm = self._make_llm(mock, meta)
-        pipe = BookPipeline(llm, settings)
-        bible = pipe.plan(
-            premise=premise,
-            chapters=chapters,
-            words_per_chapter=words_per_chapter,
-            title=title or None,
-            genre=genre or None,
-            extra_guidance=guidance or "",
-        )
+        try:
+            settings = self._settings(book_id, meta)
+            llm = self._make_llm(mock, meta)
+            pipe = BookPipeline(llm, settings)
+            bible = pipe.plan(
+                premise=premise,
+                chapters=chapters,
+                words_per_chapter=words_per_chapter,
+                title=title or None,
+                genre=genre or None,
+                extra_guidance=guidance or "",
+            )
+        except Exception:
+            import shutil
+            shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
+            raise
         # backfill meta from the planned bible
         meta["title"] = bible.title or meta["title"]
         meta["genre"] = bible.genre or meta["genre"]
@@ -584,6 +592,7 @@ class _LocalBookService:
     def write_book(self, book_id: str, only: Optional[List[int]] = None,
                    restart: bool = False, on_event=None) -> Dict[str, Any]:
         meta = self._read_meta(book_id)
+        self._require_creds(meta)  # clean error (not a deep SDK auth crash) if no creds
         from bookwriter.pipeline import BookPipeline
 
         settings = self._settings(book_id, meta)
@@ -746,13 +755,18 @@ class _LocalBookService:
             "use_cache": True, "run_continuity_check": True, "imported": True,
         }
         self._write_meta(meta)
-        settings = self._settings(book_id, meta)
-        llm = self._make_llm(bool(mock), meta) if (mock or analyze) else None
-        if llm is None:
-            analyze = False
-        graph = build_graph_from_text(
-            llm, settings, CostLedger(), text=text, title=title or None,
-            genre=genre or None, guidance=guidance, analyze=analyze, run_extract=analyze)
+        try:
+            settings = self._settings(book_id, meta)
+            llm = self._make_llm(bool(mock), meta) if (mock or analyze) else None
+            if llm is None:
+                analyze = False
+            graph = build_graph_from_text(
+                llm, settings, CostLedger(), text=text, title=title or None,
+                genre=genre or None, guidance=guidance, analyze=analyze, run_extract=analyze)
+        except Exception:
+            import shutil
+            shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
+            raise
         store = self._store(book_id)
         store.save_graph(graph)
         for rec in graph.chapters.values():
@@ -804,11 +818,22 @@ class _LocalBookService:
         store.assemble_manuscript(graph)
         return {"number": number, "title": rec.title, "word_count": rec.word_count}
 
+    def _require_creds(self, meta: Dict[str, Any]) -> None:
+        """Raise PermissionError when a live (non-mock) op has no provider creds —
+        mirrors the HTTP service's clean 400 instead of an uncaught auth error."""
+        if bool(meta.get("mock", False)):
+            return
+        from bookwriter.provider import live_available, missing_credentials_message
+        prov = meta.get("provider") or None
+        if not live_available(prov):
+            raise PermissionError(missing_credentials_message(prov))
+
     def revise_chapter(self, book_id: str, number: int, *,
                        instructions: str = "") -> Dict[str, Any]:
         from bookwriter.writer import revise_chapter as _revise
         from bookwriter.costs import CostLedger
         meta = self._read_meta(book_id)
+        self._require_creds(meta)
         store = self._store(book_id)
         graph = self._load_graph_or_404(book_id)
         plan = graph.bible.plan(number)
@@ -830,6 +855,7 @@ class _LocalBookService:
         from bookwriter.planner import extend_outline
         from bookwriter.costs import CostLedger
         meta = self._read_meta(book_id)
+        self._require_creds(meta)
         store = self._store(book_id)
         graph = self._load_graph_or_404(book_id)
         new_plans = extend_outline(self._make_llm(bool(meta.get("mock", False)), meta),
@@ -848,8 +874,10 @@ class _LocalBookService:
 
     def prepare_kdp(self, book_id: str, *, author_first: str, author_last: str,
                     language: str = "English", subtitle: str = "",
-                    series: str = "", edition: str = "",
+                    series: str = "", series_part: str = "", edition: str = "",
                     contributors: Optional[List[Dict[str, str]]] = None,
+                    publishing_rights: str = "owned", sexually_explicit: bool = False,
+                    reading_age_min: str = "", reading_age_max: str = "",
                     ) -> Dict[str, Any]:
         """Generate KDP metadata + build the upload kit into <book>/kdp/.
 
@@ -863,6 +891,7 @@ class _LocalBookService:
         from bookwriter.store import _write_json
 
         meta = self._read_meta(book_id)
+        self._require_creds(meta)
         graph = self._store(book_id).load_graph()
         if graph is None:
             raise BookNotFound(f"{book_id} has no plan; create_book first")
@@ -884,6 +913,13 @@ class _LocalBookService:
             edition=edition,
             contributors=contributors,
         )
+        # User-set identity fields the generator doesn't produce (parity with HTTP).
+        kdp_meta.series_part = series_part or ""
+        kdp_meta.publishing_rights = (
+            "public_domain" if publishing_rights == "public_domain" else "owned")
+        kdp_meta.sexually_explicit = bool(sexually_explicit)
+        kdp_meta.reading_age_min = reading_age_min or ""  # parity with HTTP service
+        kdp_meta.reading_age_max = reading_age_max or ""
         # Include any generated chapter images (parity with the HTTP path).
         images = self._store(book_id).collect_images(
             [p.number for p in graph.bible.outline])
@@ -1094,6 +1130,7 @@ class _LocalBookService:
         from bookwriter.costs import CostLedger
 
         meta = self._read_meta(book_id)
+        self._require_creds(meta)
         graph = self._load_graph_or_404(book_id)
         kdp_meta = self._kdp_metadata(book_id, graph)
         settings = self._settings(book_id, meta)
@@ -1244,8 +1281,8 @@ def build_server():
         """
         try:
             return get_service().write_book(book_id, only=only)
-        except BookNotFound as e:
-            return {"error": f"book not found: {e}"}
+        except (BookNotFound, PermissionError) as e:
+            return {"error": str(e)}
 
     @mcp.tool()
     def write_chapter(book_id: str, number: int) -> Dict[str, Any]:
@@ -1261,8 +1298,8 @@ def build_server():
         """
         try:
             return get_service().write_book(book_id, only=[number])
-        except BookNotFound as e:
-            return {"error": f"book not found: {e}"}
+        except (BookNotFound, PermissionError) as e:
+            return {"error": str(e)}
 
     @mcp.tool()
     def get_status(book_id: str) -> Dict[str, Any]:
@@ -1337,7 +1374,12 @@ def build_server():
         language: str = "English",
         subtitle: str = "",
         series: str = "",
+        series_part: str = "",
         edition: str = "",
+        publishing_rights: str = "owned",
+        sexually_explicit: bool = False,
+        reading_age_min: str = "",
+        reading_age_max: str = "",
     ) -> Dict[str, Any]:
         """Generate Amazon KDP metadata and build the upload-ready kit.
 
@@ -1374,10 +1416,15 @@ def build_server():
                 language=language,
                 subtitle=subtitle,
                 series=series,
+                series_part=series_part,
                 edition=edition,
+                publishing_rights=publishing_rights,
+                sexually_explicit=sexually_explicit,
+                reading_age_min=reading_age_min,
+                reading_age_max=reading_age_max,
             )
-        except BookNotFound as e:
-            return {"error": f"book not found: {e}"}
+        except (BookNotFound, PermissionError, ValueError) as e:
+            return {"error": str(e)}
 
     @mcp.tool()
     def export_epub(book_id: str) -> Dict[str, Any]:
@@ -1497,8 +1544,8 @@ def build_server():
         """
         try:
             return get_service().generate_marketing(book_id)
-        except BookNotFound as e:
-            return {"error": f"book not found: {e}"}
+        except (BookNotFound, PermissionError, RuntimeError) as e:
+            return {"error": str(e)}
 
     @mcp.tool()
     def generate_cover(book_id: str, title: str = "", subtitle: str = "",
@@ -1589,7 +1636,7 @@ def build_server():
         """
         try:
             return get_service().revise_chapter(book_id, number, instructions=instructions)
-        except (BookNotFound, RuntimeError) as e:
+        except (BookNotFound, RuntimeError, PermissionError) as e:
             return {"error": str(e)}
 
     @mcp.tool()
@@ -1601,7 +1648,7 @@ def build_server():
         """
         try:
             return get_service().append_chapters(book_id, count=count, guidance=guidance)
-        except (BookNotFound, RuntimeError) as e:
+        except (BookNotFound, RuntimeError, ValueError, PermissionError) as e:
             return {"error": str(e)}
 
     return mcp

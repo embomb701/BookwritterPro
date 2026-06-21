@@ -141,6 +141,32 @@ class TestMCPService(unittest.TestCase):
         self.assertIn("words", listed[book_id])
         self.assertEqual(listed[book_id]["words"], book["words"])
 
+    def test_live_ops_without_creds_raise_clean_permissionerror(self):
+        # A non-mock book with no provider creds must raise PermissionError (a
+        # clean message the tool wrappers catch) instead of a deep SDK auth crash.
+        import json as _json
+        import bookwriter.mcp_server as m
+        created = self.svc.create_book(
+            premise="A keeper and the dark water.", chapters=2,
+            words_per_chapter=120, title="Creds Guard", mock=True,
+        )
+        book_id = self._book_id(created)
+        self.svc.write_book(book_id)  # writes via mock
+        # Flip the book to live (no ANTHROPIC_API_KEY is set in this test env).
+        local = m._LocalBookService(self._tmp.name)
+        meta_path = local._meta_path(book_id)
+        with open(meta_path, encoding="utf-8") as f:
+            meta = _json.load(f)
+        meta["mock"] = False
+        with open(meta_path, "w", encoding="utf-8") as f:
+            _json.dump(meta, f)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        for call in (lambda: local.write_book(book_id),
+                     lambda: local.revise_chapter(book_id, 1, instructions="x"),
+                     lambda: local.append_chapters(book_id, count=1)):
+            with self.assertRaises(PermissionError):
+                call()
+
 
 if __name__ == "__main__":
     unittest.main()
