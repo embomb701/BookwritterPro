@@ -50,9 +50,13 @@ _ALIASES = {
     "openai-cli": "codex",
     "chatgpt": "codex",
     "openai-subscription": "codex",
-    # Grok subscription via a Grok CLI
+    # Grok (xAI) — direct API (OpenAI-compatible) is the default "grok"…
+    "grok": "grok",
+    "xai": "grok",
+    "x.ai": "grok",
+    "grok-api": "grok",
+    # …and the CLI/subscription path stays available as grok-cli.
     "grok-cli": "grok-cli",
-    "grok": "grok-cli",
     "xai-cli": "grok-cli",
     # Fully custom subprocess command
     "cli": "cli",
@@ -117,6 +121,12 @@ _PROVIDER_DEFAULTS = {
         "strong": "openai/gpt-4.1",
         "mid": "openai/gpt-4.1-mini",
         "cheap": "openai/gpt-4.1-mini",
+    },
+    # Grok (xAI) — OpenAI-compatible API at api.x.ai.
+    "grok": {
+        "strong": "grok-4",
+        "mid": "grok-3",
+        "cheap": "grok-3-mini",
     },
     # claude-cli speaks Anthropic model *aliases* to the CLI's --model flag.
     "claude-cli": {
@@ -190,6 +200,10 @@ _EXTRA_PRICES = {
     "gpt-4o-mini": ModelPrice.from_base(0.15, 0.6),
     "openai/gpt-4o": ModelPrice.from_base(2.5, 10.0),
     "openai/gpt-4o-mini": ModelPrice.from_base(0.15, 0.6),
+    # Grok (xAI) — approximate published pricing; override in Settings if it moves.
+    "grok-4": ModelPrice.from_base(3.0, 15.0),
+    "grok-3": ModelPrice.from_base(3.0, 15.0),
+    "grok-3-mini": ModelPrice.from_base(0.3, 0.5),
 }
 for _mid, _price in _EXTRA_PRICES.items():
     MODEL_PRICES.setdefault(_mid, _price)
@@ -203,6 +217,14 @@ def _claude_binary() -> Optional[str]:
     return rc.getenv("BOOKWRITER_CLAUDE_BIN") or shutil.which("claude")
 
 
+# xAI's OpenAI-compatible endpoint + key (GROK_API_KEY preferred, XAI_API_KEY ok).
+GROK_BASE_URL = "https://api.x.ai/v1"
+
+
+def _grok_key() -> Optional[str]:
+    return rc.getenv("GROK_API_KEY") or rc.getenv("XAI_API_KEY")
+
+
 def live_available(provider: Optional[str] = None) -> bool:
     """True when the selected provider has the credentials/binary it needs."""
     p = provider or provider_name()
@@ -210,6 +232,8 @@ def live_available(provider: Optional[str] = None) -> bool:
         return bool(rc.getenv("OPENAI_API_KEY"))
     if p == "openrouter":
         return bool(rc.getenv("OPENROUTER_API_KEY"))
+    if p == "grok":
+        return bool(_grok_key())
     if p == "claude-cli":
         return _claude_binary() is not None
     if p in _CLI_PROVIDERS:  # codex / grok-cli / cli
@@ -264,6 +288,13 @@ def verify(provider: Optional[str] = None) -> dict:
                                   {"Authorization": f"Bearer {rc.getenv('OPENROUTER_API_KEY')}"})
         return ({"ok": True, "detail": "OpenRouter reachable — key valid."} if code == 200
                 else {"ok": False, "detail": ("Key rejected." if code in (401, 403) else err or f"HTTP {code}.")})
+    if p == "grok":
+        if not _grok_key():
+            return {"ok": False, "detail": "No GROK_API_KEY set."}
+        code, err = _http_status(f"{GROK_BASE_URL}/models",
+                                  {"Authorization": f"Bearer {_grok_key()}"})
+        return ({"ok": True, "detail": "Grok (xAI) reachable — key valid."} if code == 200
+                else {"ok": False, "detail": ("Key rejected." if code in (401, 403) else err or f"HTTP {code}.")})
     if p in _CLI_PROVIDERS:
         if p == "claude-cli":
             found = _claude_binary()
@@ -283,6 +314,7 @@ def missing_credentials_message(provider: Optional[str] = None) -> str:
     hints = {
         "openai": "set OPENAI_API_KEY",
         "openrouter": "set OPENROUTER_API_KEY",
+        "grok": "set GROK_API_KEY (your xAI API key)",
         "claude-cli": "install and log in to the Claude Code CLI (`claude`)",
         "codex": "install the OpenAI Codex CLI and sign in with ChatGPT (`codex login`)",
         "grok-cli": "install the Grok CLI and give it an xAI key (GROK_API_KEY) "
@@ -331,6 +363,14 @@ def make_llm(mock: bool = False, provider: Optional[str] = None,
             provider="openrouter",
             model_override=model,
         )
+    if p == "grok":
+        from .llm_openai import OpenAICompatLLM
+        return OpenAICompatLLM(
+            api_key=_grok_key(),
+            base_url=rc.getenv("GROK_BASE_URL", GROK_BASE_URL),
+            provider="grok",
+            model_override=model,
+        )
     if p == "claude-cli":
         from .llm_claude_cli import ClaudeCliLLM
         return ClaudeCliLLM(binary=_claude_binary(), model_override=model)
@@ -353,9 +393,10 @@ _PROVIDER_LABELS = {
     "anthropic": "Anthropic API",
     "openai": "OpenAI API",
     "openrouter": "OpenRouter",
+    "grok": "Grok — xAI API",
     "claude-cli": "Claude (subscription)",
     "codex": "ChatGPT — Codex (subscription)",
-    "grok-cli": "Grok (subscription)",
+    "grok-cli": "Grok CLI (subscription)",
     "cli": "Custom CLI",
 }
 
@@ -375,7 +416,13 @@ MODEL_CATALOG = {
         ("openai/gpt-4.1", "GPT-4.1"),
         ("openai/gpt-4.1-mini", "GPT-4.1 mini"),
         ("anthropic/claude-3.7-sonnet", "Claude 3.7 Sonnet"),
+        ("x-ai/grok-4", "Grok 4 (xAI)"),
         ("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+    ],
+    "grok": [
+        ("grok-4", "Grok 4 — best quality"),
+        ("grok-3", "Grok 3 — balanced"),
+        ("grok-3-mini", "Grok 3 mini — fast & cheap"),
     ],
     "claude-cli": [
         ("opus", "Claude Opus (subscription)"),
@@ -387,7 +434,7 @@ MODEL_CATALOG = {
     "cli": [("", "CLI default")],
 }
 
-_CATALOG_ORDER = ["anthropic", "openai", "openrouter", "claude-cli", "codex", "grok-cli", "cli"]
+_CATALOG_ORDER = ["anthropic", "openai", "openrouter", "grok", "claude-cli", "codex", "grok-cli", "cli"]
 
 
 def provider_catalog() -> dict:

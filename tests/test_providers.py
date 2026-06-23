@@ -19,7 +19,8 @@ class _EnvGuard(unittest.TestCase):
 
     _VARS = [
         "BOOKWRITER_LLM_PROVIDER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY", "BOOKWRITER_MODEL_STRONG", "BOOKWRITER_MODEL_MID",
+        "OPENROUTER_API_KEY", "GROK_API_KEY", "XAI_API_KEY",
+        "BOOKWRITER_MODEL_STRONG", "BOOKWRITER_MODEL_MID",
         "BOOKWRITER_MODEL_CHEAP", "BOOKWRITER_CLAUDE_BIN",
         "BOOKWRITER_CODEX_CMD", "BOOKWRITER_GROK_CMD", "BOOKWRITER_CLI_CMD",
     ]
@@ -45,7 +46,8 @@ class TestProviderSelection(_EnvGuard):
         for raw, want in [("OpenAI", "openai"), ("router", "openrouter"),
                           ("subscription", "claude-cli"), ("cli", "cli"),
                           ("claude", "anthropic"), ("chatgpt", "codex"),
-                          ("Codex", "codex"), ("grok", "grok-cli")]:
+                          ("Codex", "codex"), ("grok", "grok"),
+                          ("xai", "grok"), ("grok-cli", "grok-cli")]:
             os.environ["BOOKWRITER_LLM_PROVIDER"] = raw
             self.assertEqual(provider.provider_name(), want)
 
@@ -77,8 +79,22 @@ class TestProviderSelection(_EnvGuard):
         self.assertEqual(provider.target_model("openrouter", "claude-haiku-4-5"),
                          "openai/gpt-4.1-mini")
         self.assertEqual(provider.target_model("claude-cli", "claude-sonnet-4-6"), "sonnet")
+        self.assertEqual(provider.target_model("grok", "claude-opus-4-8"), "grok-4")
+        self.assertEqual(provider.target_model("grok", "claude-haiku-4-5"), "grok-3-mini")
         os.environ["BOOKWRITER_MODEL_STRONG"] = "my/model"
         self.assertEqual(provider.target_model("openai", "claude-opus-4-8"), "my/model")
+
+    def test_grok_api_provider(self):
+        # grok (default) is the xAI API; grok-cli is the subscription CLI.
+        self.assertEqual(provider.normalize_provider("grok"), "grok")
+        self.assertEqual(provider.normalize_provider("grok-cli"), "grok-cli")
+        os.environ["BOOKWRITER_LLM_PROVIDER"] = "grok"
+        self.assertFalse(provider.live_available())
+        os.environ["GROK_API_KEY"] = "xai-test"
+        self.assertTrue(provider.live_available())
+        ids = [p["id"] for p in provider.provider_catalog()["providers"]]
+        self.assertIn("grok", ids)
+        self.assertIn("grok-cli", ids)
 
     def test_live_available_gates_per_provider(self):
         os.environ["BOOKWRITER_LLM_PROVIDER"] = "openai"
@@ -384,8 +400,8 @@ class TestGenericCliAdapter(unittest.TestCase):
 class TestMakeLlmCliRouting(_EnvGuard):
     """make_llm wires each subscription CLI with the right argv + stdin mode."""
 
-    def test_grok_routed_with_stdin_false(self):
-        os.environ["BOOKWRITER_LLM_PROVIDER"] = "grok"
+    def test_grok_cli_routed_with_stdin_false(self):
+        os.environ["BOOKWRITER_LLM_PROVIDER"] = "grok-cli"  # CLI/subscription path
         llm = provider.make_llm()
         self.assertFalse(llm.stdin)
         self.assertEqual(llm.command, ["grok", "--prompt"])

@@ -106,9 +106,10 @@ Every book is configured in a **Create AI Book** setup panel — chapters, lengt
 | **Anthropic** | Claude via the API | `ANTHROPIC_API_KEY` |
 | **OpenAI** | GPT via the API | `OPENAI_API_KEY` |
 | **OpenRouter** | one key, dozens of models | `OPENROUTER_API_KEY` |
+| **Grok (xAI)** | Grok via the xAI API (`api.x.ai`) | `GROK_API_KEY` (or `XAI_API_KEY`) |
 | **Claude subscription** | `claude -p` (Claude Code) | Pro/Max login — *no API key* |
 | **ChatGPT subscription** | `codex exec -` (Codex CLI) | Plus/Pro login — *no API key* |
-| **Grok** | `grok --prompt` (Grok CLI) | xAI key (`GROK_API_KEY`) in the CLI's env |
+| **Grok CLI subscription** | `grok --prompt` (Grok CLI) | a signed‑in Grok CLI on PATH |
 | **Any other model** | a custom CLI, or any OpenAI‑compatible endpoint | `BOOKWRITER_CLI_CMD`, or `OPENAI_BASE_URL` |
 
 ```bash
