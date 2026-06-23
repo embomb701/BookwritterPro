@@ -1023,6 +1023,7 @@ const SettingsModal = {
     { name: "ANTHROPIC_API_KEY", label: "Anthropic API key", kind: "llm", provider: "anthropic", ph: "sk-ant-…" },
     { name: "OPENAI_API_KEY", label: "OpenAI API key", kind: "llm", provider: "openai", ph: "sk-…" },
     { name: "OPENROUTER_API_KEY", label: "OpenRouter API key", kind: "llm", provider: "openrouter", ph: "sk-or-…" },
+    { name: "GROK_API_KEY", label: "Grok (xAI) API key", kind: "llm", provider: "grok", ph: "xai-…" },
     { name: "PIXIO_API_KEY", label: "Pixio API key — chapter images", kind: "image", provider: "pixio", ph: "pxio_live_…" },
   ],
   // Subscription backends — auth lives in the vendor CLI (you sign in once in a

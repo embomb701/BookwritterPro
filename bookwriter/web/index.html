@@ -617,19 +617,41 @@
               <div class="field">
                 <label for="cm-style">Writing Style</label>
                 <select id="cm-style" name="style">
-                  <option selected>Informative</option>
-                  <option>Narrative</option>
-                  <option>Conversational</option>
-                  <option>Persuasive</option>
-                  <option>Academic</option>
-                  <option>Technical</option>
-                  <option>Inspirational</option>
-                  <option>Humorous</option>
+                  <optgroup label="General">
+                    <option selected>Narrative</option>
+                    <option>Informative</option>
+                    <option>Conversational</option>
+                    <option>Persuasive</option>
+                    <option>Academic</option>
+                    <option>Technical</option>
+                    <option>Inspirational</option>
+                    <option>Witty / Sarcastic</option>
+                  </optgroup>
+                  <optgroup label="Genre &amp; fiction">
+                    <option>Dark / Gritty</option>
+                    <option>Mysterious / Atmospheric</option>
+                    <option>Suspenseful / Thriller</option>
+                    <option>Action-Packed</option>
+                    <option>Epic / Fantasy</option>
+                    <option>Horror / Supernatural</option>
+                    <option>Romantic / Sensual</option>
+                    <option>Steamy / Erotic</option>
+                    <option>Poetic / Lyrical</option>
+                  </optgroup>
                 </select>
               </div>
               <div class="field">
                 <label for="cm-audience">Audience</label>
-                <input id="cm-audience" name="audience" type="text" value="General readers" placeholder="Who is this for?" />
+                <select id="cm-audience" name="audience">
+                  <option selected>General readers</option>
+                  <option>Adult</option>
+                  <option>New Adult</option>
+                  <option>Young Adult (Teens)</option>
+                  <option>Children</option>
+                  <option>Mature / Erotic</option>
+                  <option>Romance readers</option>
+                  <option>Academic / Professional</option>
+                </select>
               </div>
             </div>
 
@@ -641,14 +663,36 @@
               <div class="field">
                 <label for="cm-booktype">Book Type</label>
                 <select id="cm-booktype" name="booktype">
-                  <option selected>Nonfiction</option>
-                  <option>Fiction</option>
-                  <option>Self-help</option>
-                  <option>Biography / Memoir</option>
-                  <option>Business</option>
-                  <option>Children's</option>
-                  <option>Textbook / Educational</option>
-                  <option>Poetry</option>
+                  <optgroup label="Fiction">
+                    <option selected>Fiction</option>
+                    <option>Fantasy (High Fantasy)</option>
+                    <option>Urban Fantasy</option>
+                    <option>Young Adult Fantasy / Romance</option>
+                    <option>Sci-Fi</option>
+                    <option>Post-Apocalyptic / Dystopian</option>
+                    <option>Horror</option>
+                    <option>Paranormal Romance</option>
+                    <option>Romance</option>
+                    <option>LGBTQ+ Romance</option>
+                    <option>Adult Romance / Erotica</option>
+                    <option>Thriller / Psychological Thriller</option>
+                    <option>Crime / Detective</option>
+                    <option>Mystery</option>
+                    <option>Action / Adventure</option>
+                    <option>Historical Fiction</option>
+                    <option>Literary Fiction</option>
+                    <option>Children's</option>
+                    <option>Poetry</option>
+                  </optgroup>
+                  <optgroup label="Nonfiction">
+                    <option>Nonfiction</option>
+                    <option>Self-Help / Personal Development</option>
+                    <option>Business</option>
+                    <option>Memoir / Autobiography</option>
+                    <option>Biography</option>
+                    <option>Cookbook / How-To</option>
+                    <option>Textbook / Educational</option>
+                  </optgroup>
                 </select>
               </div>
             </div>

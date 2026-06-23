@@ -70,14 +70,18 @@
   function classifyGenre(genre) {
     const g = String(genre || "").toLowerCase();
     const has = (re) => re.test(g);
-    if (has(/horror|gothic|dark|haunt|terror|macabre/)) return { motif: "moon",   bias: ["ink", "oxblood", "plum", "ember"] };
-    if (has(/myster|crime|noir|detective|thriller|spy/)) return { motif: "key",    bias: ["slate", "midnight", "ink", "teal", "copper"] };
-    if (has(/sci|space|future|cyber|tech|dystop|alien/)) return { motif: "orbit",  bias: ["midnight", "indigo", "teal", "slate"] };
-    if (has(/fantas|myth|magic|epic|dragon|sword|saga/)) return { motif: "spire",  bias: ["forest", "plum", "indigo", "ember"] };
-    if (has(/romance|love|cozy|heart|relationship/))     return { motif: "bloom",  bias: ["rose", "sand", "copper"] };
+    // Romance (incl. erotica/paranormal-romance) — check before horror/fantasy so
+    // "paranormal romance"/"steamy" land on the romance motif, not moon/spire.
+    if (has(/romance|romantic|love|cozy|heart|relationship|erotic|steamy|sensual|lgbtq|sapphic|mm |rom-?com/)) return { motif: "bloom", bias: ["rose", "sand", "copper", "plum"] };
+    if (has(/horror|gothic|dark|gritty|haunt|terror|macabre|supernatural|paranormal|occult|witch|vampire|demon|ghost/)) return { motif: "moon", bias: ["ink", "oxblood", "plum", "ember"] };
+    if (has(/myster|crime|noir|detective|thriller|suspense|spy|psychological/)) return { motif: "key", bias: ["slate", "midnight", "ink", "teal", "copper"] };
+    if (has(/sci|space|future|cyber|tech|dystop|apocalyp|alien|steampunk/)) return { motif: "orbit", bias: ["midnight", "indigo", "teal", "slate"] };
+    if (has(/fantas|myth|magic|epic|dragon|sword|saga|urban fantasy/)) return { motif: "spire", bias: ["forest", "plum", "indigo", "ember"] };
     if (has(/histor|war|classic|literary|drama/))        return { motif: "rule",   bias: ["oxblood", "sand", "copper"] };
-    if (has(/adventur|quest|journey|explor|sea|ocean/))  return { motif: "compass",bias: ["teal", "midnight", "forest"] };
-    if (has(/poet|verse|essay|memoir/))                  return { motif: "quill",  bias: ["sand", "ember", "rose"] };
+    if (has(/adventur|action|quest|journey|explor|sea|ocean/)) return { motif: "compass", bias: ["teal", "midnight", "forest"] };
+    if (has(/poet|verse|essay|memoir|biograph|auto/))    return { motif: "quill",  bias: ["sand", "ember", "rose"] };
+    // Nonfiction / how-to / business / self-help / cookbook -> a clean ruled mark.
+    if (has(/cook|recipe|how.?to|guide|manual|business|self.?help|nonfiction|reference|textbook|educational|personal development/)) return { motif: "rule", bias: ["sand", "slate", "copper"] };
     return { motif: "diamond", bias: ["oxblood", "midnight", "forest", "ember"] };
   }
 
