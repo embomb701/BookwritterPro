@@ -23,6 +23,7 @@ class CreateBookRequest(BaseModel):
     words_per_chapter: int = Field(2000, ge=100, le=20000)
     title: Optional[str] = Field(None, max_length=300)
     genre: Optional[str] = Field(None, max_length=200)
+    book_format: str = Field("novel", max_length=120)
     guidance: Optional[str] = Field(None, max_length=8000)
     profile: str = "balanced"
     mock: bool = False

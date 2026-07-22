@@ -223,6 +223,7 @@ class _ServiceAdapter:
                     words_per_chapter=kw.get("words_per_chapter", 2000),
                     title=kw.get("title") or None,
                     genre=kw.get("genre") or None,
+                    book_format=kw.get("book_format") or "novel",
                     guidance=kw.get("guidance") or None,
                     profile=kw.get("profile", "balanced"),
                     mock=bool(kw.get("mock", False)),
@@ -233,7 +234,7 @@ class _ServiceAdapter:
                 return _flatten_create(res)
             except Exception as e:
                 # Translate the HTTP service's typed errors into the same
-                # PermissionError/ValueError the tools expect, else re-raise.
+
                 detail = getattr(e, "detail", str(e))
                 status = getattr(e, "status", None)
                 if status == 400 and "demo mode (mock)" in detail:
@@ -526,7 +527,8 @@ class _LocalBookService:
 
     def create_book(self, *, premise: str, chapters: Optional[int] = None,
                     words_per_chapter: int = 2000, title: str = "",
-                    genre: str = "", guidance: str = "", profile: str = "balanced",
+                    genre: str = "", book_format: str = "novel",
+                    guidance: str = "", profile: str = "balanced",
                     mock: bool = False, use_cache: bool = True,
                     run_continuity_check: bool = True) -> Dict[str, Any]:
         if not premise or not premise.strip():
@@ -550,6 +552,7 @@ class _LocalBookService:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "profile": profile,
             "mock": bool(mock),
+            "book_format": book_format.strip() or "novel",
             "genre": genre,
             "logline": "",
             "provider": "",   # parity with the HTTP service meta shape
@@ -572,6 +575,7 @@ class _LocalBookService:
                 words_per_chapter=words_per_chapter,
                 title=title or None,
                 genre=genre or None,
+                book_format=book_format,
                 extra_guidance=guidance or "",
             )
         except Exception:
@@ -580,6 +584,7 @@ class _LocalBookService:
             raise
         # backfill meta from the planned bible
         meta["title"] = bible.title or meta["title"]
+        meta["book_format"] = bible.format or meta["book_format"]
         meta["genre"] = bible.genre or meta["genre"]
         meta["logline"] = bible.logline or meta["logline"]
         self._write_meta(meta)

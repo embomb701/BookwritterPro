@@ -33,6 +33,7 @@ def build_bible(d: Dict[str, Any]) -> Bible:
     bible = Bible(
         title=d.get("title", "Untitled"),
         premise=d.get("premise", ""),
+        format=d.get("format", "novel") or "novel",
         genre=d.get("genre", ""),
         tone=d.get("tone", ""),
         audience=d.get("audience", ""),
@@ -57,6 +58,7 @@ def plan_book(
     llm: LLM, settings: Settings, ledger: CostLedger, *,
     premise: str, chapters: Optional[int] = None, words_per_chapter: int = 2000,
     title: Optional[str] = None, genre: Optional[str] = None,
+    book_format: str = "novel",
     extra_guidance: str = "",
 ) -> Bible:
     target = chapters or 12
@@ -68,6 +70,8 @@ def plan_book(
         user.append(f"Working title: {title}")
     if genre:
         user.append(f"Genre: {genre}")
+    if book_format:
+        user.append(f"Story format: {book_format}")
     if extra_guidance:
         user.append(f"\nAdditional guidance:\n{extra_guidance}")
     user.append(

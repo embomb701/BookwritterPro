@@ -100,6 +100,7 @@ class StoryGraph:
         out.append(f"Title: {b.title}")
         if b.logline:
             out.append(f"Logline: {b.logline}")
+        out.append(f"Format: {b.format}")
         out.append(f"Genre: {b.genre} | Tone: {b.tone} | Audience: {b.audience}")
         out.append(f"POV: {b.pov} | Tense: {b.tense}")
         if b.themes:

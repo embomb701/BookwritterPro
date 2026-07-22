@@ -569,8 +569,8 @@
   </template>
 
   <!-- Create AI Book modal — the book-setup dialog (provider/model, chapter
-       length, style, audience, book type, toggles) with the live cover forge.
-       Built/opened by CreateModal in app.js; fields are prefixed `cm-`. -->
+       length, style, audience, genre/format, toggles) with the live cover forge.
+
   <template id="tpl-create">
     <div class="create-overlay" role="dialog" aria-modal="true" aria-labelledby="cm-title-h">
       <div class="create-panel" role="document">
@@ -661,8 +661,8 @@
                 <select id="cm-provider" name="provider"></select>
               </div>
               <div class="field">
-                <label for="cm-booktype">Book Type</label>
-                <select id="cm-booktype" name="booktype">
+                <label for="cm-genre">Genre</label>
+                <select id="cm-genre" name="genre">
                   <optgroup label="Fiction">
                     <option selected>Fiction</option>
                     <option>Fantasy (High Fantasy)</option>
@@ -697,9 +697,23 @@
               </div>
             </div>
 
-            <div class="field">
-              <label for="cm-model" id="cm-model-label">Text Model</label>
-              <select id="cm-model" name="model"></select>
+            <div class="field-row">
+              <div class="field">
+                <label for="cm-format">Story Format</label>
+                <select id="cm-format" name="format">
+                  <option value="novel" selected>Novel</option>
+                  <option value="novella">Novella</option>
+                  <option value="short story collection">Short story collection</option>
+                  <option value="comic">Comic</option>
+                  <option value="graphic novel">Graphic novel</option>
+                  <option value="manga">Manga</option>
+                  <option value="webtoon">Webtoon</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="cm-model" id="cm-model-label">Text Model</label>
+                <select id="cm-model" name="model"></select>
+              </div>
             </div>
 
             <div class="create-toggles">

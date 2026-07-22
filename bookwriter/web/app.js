@@ -645,6 +645,7 @@ async function onComposerSubmit(e, view) {
     premise,
     title: $("#f-title", view).value.trim() || undefined,
     genre: $("#f-genre", view).value.trim() || undefined,
+    book_format: "novel",
     guidance: $("#f-guidance", view).value.trim() || undefined,
     chapters: $("#f-chapters", view).value ? Number($("#f-chapters", view).value) : undefined,
     words_per_chapter: Number($("#f-wpc", view).value) || 2000,
@@ -838,22 +839,28 @@ const CreateModal = {
       return;
     }
 
-    const style = val("#cm-style"), audience = val("#cm-audience"), bookType = val("#cm-booktype");
+    const style = val("#cm-style"), audience = val("#cm-audience");
+    const genre = val("#cm-genre"), bookFormat = val("#cm-format") || "novel";
     const textGraphics = node.querySelector("#cm-text-graphics").checked;
+    const visualFormat = /comic|graphic novel|manga|webtoon/i.test(bookFormat);
     const guidance = [
       style ? `Writing style: ${style}.` : "",
       audience ? `Intended audience: ${audience}.` : "",
-      bookType ? `Book type: ${bookType}.` : "",
+      genre ? `Genre: ${genre}.` : "",
+      bookFormat ? `Story format: ${bookFormat}.` : "",
       textGraphics
         ? "You may include charts, diagrams, tables, and visual explainers where they genuinely help."
-        : "Do not include charts, diagrams, tables, or visual explainers — write prose only.",
+        : (visualFormat
+            ? "Keep the storytelling visually staged and panel-ready rather than prose-only."
+            : "Do not include charts, diagrams, tables, or visual explainers — write prose only."),
     ].filter(Boolean).join(" ");
 
     const chapters = node.querySelector("#cm-chapters").value;
     const payload = {
       premise,
       title: title || undefined,
-      genre: bookType || undefined,
+      genre: genre || undefined,
+      book_format: bookFormat,
       guidance,
       chapters: chapters ? Number(chapters) : undefined,
       words_per_chapter: Number(node.querySelector("#cm-length").value) || 2000,
@@ -975,14 +982,14 @@ const ImportModal = {
 window.ImportModal = ImportModal;
 
 /* Live cover forge for the modal — the jacket designs itself from the title /
-   topic / book-type, mirroring the composer's forge (reduced-motion-safe). */
+   topic / genre, mirroring the composer's forge (reduced-motion-safe). */
 function bindForge(node, seed) {
   const coverEl = node.querySelector("#cm-cover");
   const bookEl = node.querySelector("#cm-book");
   const emptyEl = node.querySelector("#cm-empty");
   const titleEl = node.querySelector("#cm-title");
   const topicEl = node.querySelector("#cm-topic");
-  const typeEl = node.querySelector("#cm-booktype");
+  const typeEl = node.querySelector("#cm-genre");
   if (!coverEl || !window.Covers || typeof window.Covers.svg !== "function") return;
 
   const workingTitle = () => {

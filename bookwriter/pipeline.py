@@ -91,12 +91,14 @@ class BookPipeline:
     # ------------------------------------------------------------------
     def plan(self, *, premise: str, chapters: Optional[int] = None,
              words_per_chapter: int = 2000, title: Optional[str] = None,
-             genre: Optional[str] = None, extra_guidance: str = "") -> Bible:
+             genre: Optional[str] = None, book_format: str = "novel",
+             extra_guidance: str = "") -> Bible:
         self.progress("Planning book (bible + outline)...")
         bible = plan_book(
             self.llm, self.settings, self.ledger,
             premise=premise, chapters=chapters, words_per_chapter=words_per_chapter,
-            title=title, genre=genre, extra_guidance=extra_guidance,
+            title=title, genre=genre, book_format=book_format,
+            extra_guidance=extra_guidance,
         )
         self.graph = StoryGraph(bible)
         self.store.save_graph(self.graph)
@@ -108,6 +110,7 @@ class BookPipeline:
         return bible
 
     # ------------------------------------------------------------------
+
     def load(self) -> bool:
         graph = self.store.load_graph()
         if graph is None:

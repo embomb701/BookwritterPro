@@ -313,6 +313,7 @@ class BookService:
             "created_at": _now_iso(),
             "profile": req.profile,
             "mock": bool(req.mock),
+            "book_format": (req.book_format or "novel").strip() or "novel",
             "genre": req.genre or "",
             "logline": "",
             "use_cache": bool(req.use_cache),
@@ -333,12 +334,13 @@ class BookService:
                 words_per_chapter=req.words_per_chapter,
                 title=req.title,
                 genre=req.genre,
+                book_format=req.book_format,
                 extra_guidance=req.guidance or "",
             )
         except ServiceError:
             raise
         except Exception as e:
-            # Planning failed — clean up the half-created book dir.
+
             shutil.rmtree(self._book_dir(book_id), ignore_errors=True)
             raise ServiceError(500, f"Planning failed: {e}")
 
@@ -347,6 +349,7 @@ class BookService:
             bible.title = req.title
             BookStore(self._book_dir(book_id)).save_bible(bible)
         meta["title"] = (req.title or bible.title) or meta["title"]
+        meta["book_format"] = bible.format or meta["book_format"]
         meta["genre"] = req.genre or bible.genre or meta["genre"]
         meta["logline"] = bible.logline or meta["logline"]
         self._write_meta(book_id, meta)

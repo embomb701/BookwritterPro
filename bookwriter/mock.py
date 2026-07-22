@@ -56,7 +56,7 @@ class MockLLM:
         m = re.search(r"approximately (\d+) words", user)
         target = min(int(m.group(1)) if m else 300, 600)
         title = self._chapter_title(user)
-        prose = self._mock_prose(title, target)
+        prose = self._mock_text(title, target, user, cached)
         if on_delta is not None:
             # Emit in word-ish chunks so the UI's live-typing path is exercised offline.
             # BOOKWRITER_MOCK_DELAY (seconds, default 0) paces the stream so the
@@ -74,6 +74,20 @@ class MockLLM:
         self._record(ledger, stage, model, system, user, cached, use_cache, cache_ttl,
                      out_tokens=target * 4 // 3)
         return prose
+
+    @staticmethod
+    def _is_visual_format(fmt: str) -> bool:
+        low = (fmt or "").lower()
+        return any(tag in low for tag in ("comic", "graphic novel", "manga", "webtoon"))
+
+    @classmethod
+    def _story_format(cls, user: str, cached: Optional[str]) -> str:
+        scope = "\n".join(part for part in (cached or "", user or "") if part)
+        for pat in (r"Story format:\s*(.+)", r"Format:\s*(.+)"):
+            m = re.search(pat, scope, re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        return "novel"
 
     @staticmethod
     def _mock_prose(title: str, target: int) -> str:
@@ -97,6 +111,28 @@ class MockLLM:
             i += 1
         return " ".join(out)
 
+    @classmethod
+    def _mock_script(cls, title: str, target: int) -> str:
+        blocks = [
+            "PAGE 1\n\nPANEL 1\nA cold dawn settles over the city as the protagonist spots the first sign that today will go wrong.\n\nCAPTION\nNothing stays buried forever.",
+            "PANEL 2\nThe hero tightens their grip on the clue, watching the crowd move around them.\n\nHERO\nIf this is real, everything changes.",
+            "PAGE 2\n\nPANEL 1\nA rival steps into the frame with a look that says they know more than they should.\n\nRIVAL\nYou were never supposed to find that.",
+            "PANEL 2\nThe moment sharpens into a choice neither of them can avoid.\n\nCAPTION\nAnd the city holds its breath.",
+        ]
+        out = [title.strip().upper() or "UNTITLED CHAPTER"]
+        i = 0
+        while len(" ".join(out).split()) < target:
+            out.append(blocks[i % len(blocks)])
+            i += 1
+        return "\n\n".join(out)
+
+    @classmethod
+    def _mock_text(cls, title: str, target: int, user: str, cached: Optional[str]) -> str:
+        fmt = cls._story_format(user, cached)
+        if cls._is_visual_format(fmt):
+            return cls._mock_script(title, target)
+        return cls._mock_prose(title, target)
+
     # ------------------------------------------------------------------
     # Light parsing of the planner prompt so the offline demo reflects the
     # user's actual premise/genre/title instead of canned boilerplate.
@@ -119,7 +155,8 @@ class MockLLM:
                    else "A story waiting to be told.")
         genre = grab(r"Genre:\s*(.+)", "literary fiction")
         title = grab(r"Working title:\s*(.+)", "")
-        return premise.strip(), genre.strip() or "literary fiction", title.strip()
+        fmt = grab(r"Story format:\s*(.+)", "novel") or "novel"
+        return premise.strip(), genre.strip() or "literary fiction", title.strip(), fmt.strip()
 
     @classmethod
     def _keywords(cls, premise: str):
@@ -136,7 +173,7 @@ class MockLLM:
     def _plan(self, user: str) -> Dict[str, Any]:
         m = re.search(r"exactly (\d+) chapters", user)
         n = int(m.group(1)) if m else 3
-        premise, genre, title = self._parse(user)
+        premise, genre, title, fmt = self._parse(user)
         kw = self._keywords(premise)
         focus = kw[0].capitalize() if kw else "Threshold"
 
@@ -243,6 +280,7 @@ class MockLLM:
             "title": title,
             "logline": logline,
             "premise": premise,
+            "format": fmt,
             "genre": genre,
             "tone": "atmospheric, restrained",
             "audience": "adult",

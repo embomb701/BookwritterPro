@@ -288,6 +288,7 @@ class ChapterRecord:
 class Bible:
     title: str = ""
     premise: str = ""
+    format: str = "novel"
     genre: str = ""
     tone: str = ""
     audience: str = ""
@@ -320,6 +321,7 @@ class Bible:
         d = _clean({
             "title": self.title,
             "premise": self.premise,
+            "format": self.format,
             "genre": self.genre,
             "tone": self.tone,
             "audience": self.audience,
@@ -343,6 +345,7 @@ class Bible:
         return cls(
             title=d.get("title", ""),
             premise=d.get("premise", ""),
+            format=d.get("format", "novel") or "novel",
             genre=d.get("genre", ""),
             tone=d.get("tone", ""),
             audience=d.get("audience", ""),
